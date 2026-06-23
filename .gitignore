@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local vault exports or private data
+vault/
+Ky Second Brain/
+*.log
+
+# Editor
+.vscode/
+.idea/
