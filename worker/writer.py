@@ -8,6 +8,12 @@ from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 
 
+EXACT_ALLOWED_PATHS = {
+    "00-System/Automation Log.md",
+    "01-Inbox/Review Queue.md",
+}
+
+
 @dataclass(frozen=True)
 class WriteResult:
     path: Path
@@ -40,13 +46,17 @@ class GeneratedWriter:
         self.allowed_write_paths = {
             normalize_relative_path(path) for path in config["allowed_write_paths"]
         }
+        self.allowed_exact_paths = self.allowed_write_paths & EXACT_ALLOWED_PATHS
+        self.allowed_directory_prefixes = self.allowed_write_paths - EXACT_ALLOWED_PATHS
         self.processed_marker = config["processed_marker"]
         self.intended_paths: list[Path] = []
 
     def is_allowed(self, relative_path: str) -> bool:
         normalized = normalize_relative_path(relative_path)
-        for allowed in self.allowed_write_paths:
-            if normalized == allowed or normalized.startswith(f"{allowed}/"):
+        if normalized in self.allowed_exact_paths:
+            return True
+        for allowed in self.allowed_directory_prefixes:
+            if normalized.startswith(f"{allowed}/"):
                 return True
         return False
 
@@ -122,4 +132,3 @@ class GeneratedWriter:
             f"02-Projects/{safe_project}/Process/{current_date} - Generated Notes.md",
             markdown,
         )
-

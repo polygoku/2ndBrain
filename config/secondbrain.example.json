@@ -3,6 +3,8 @@
   "openclaw_command": "openclaw run --skill {skill} --input {prompt_file}",
   "openclaw_skill": "daily-brief",
   "openclaw_timeout_seconds": 180,
+  "openclaw_shell": false,
+  "retain_prompt_files": false,
   "vps_repo_path": "/opt/secondbrain",
   "vps_vault_path": "/opt/secondbrain/vault",
   "logs_path": "/opt/secondbrain/logs",
@@ -25,4 +27,3 @@
   "processed_marker": "<!-- processed-by-2ndbrain -->",
   "dry_run": true
 }
-

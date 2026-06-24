@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import shlex
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -65,22 +68,62 @@ def run_openclaw(prompt: str, config: dict, dry_run: bool = False, mock: bool = 
 
     tmp_path = Path(config["tmp_path"])
     tmp_path.mkdir(parents=True, exist_ok=True)
-    prompt_file = tmp_path / "openclaw_prompt.md"
-    prompt_file.write_text(prompt, encoding="utf-8")
-
-    command = config["openclaw_command"].format(
-        skill=config["openclaw_skill"],
-        prompt_file=str(prompt_file),
-    )
-    timeout = int(config.get("openclaw_timeout_seconds", 180))
+    prompt_file: Path | None = None
+    retain_prompt_files = bool(config.get("retain_prompt_files", False))
     try:
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-            shell=True,
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            delete=False,
+            dir=tmp_path,
+            suffix=".md",
+        ) as handle:
+            handle.write(prompt)
+            prompt_file = Path(handle.name)
+
+        command = config["openclaw_command"].format(
+            skill=config["openclaw_skill"],
+            prompt_file=str(prompt_file),
+        )
+        argv = shlex.split(command, posix=os.name != "nt")
+        timeout = int(config.get("openclaw_timeout_seconds", 180))
+        try:
+            completed = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+                shell=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return OpenClawResult(
+                success=False,
+                markdown="",
+                stderr=str(exc),
+                called=True,
+                error=f"OpenClaw command failed to start or timed out: {exc}",
+                prompt_file=prompt_file,
+            )
+
+        if completed.returncode != 0:
+            return OpenClawResult(
+                success=False,
+                markdown="",
+                stderr=completed.stderr,
+                called=True,
+                error=f"OpenClaw command exited with code {completed.returncode}",
+                returncode=completed.returncode,
+                prompt_file=prompt_file,
+            )
+
+        return OpenClawResult(
+            success=True,
+            markdown=completed.stdout,
+            stderr=completed.stderr,
+            called=True,
+            returncode=completed.returncode,
+            prompt_file=prompt_file,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return OpenClawResult(
@@ -91,23 +134,6 @@ def run_openclaw(prompt: str, config: dict, dry_run: bool = False, mock: bool = 
             error=f"OpenClaw command failed to start or timed out: {exc}",
             prompt_file=prompt_file,
         )
-
-    if completed.returncode != 0:
-        return OpenClawResult(
-            success=False,
-            markdown="",
-            stderr=completed.stderr,
-            called=True,
-            error=f"OpenClaw command exited with code {completed.returncode}",
-            returncode=completed.returncode,
-            prompt_file=prompt_file,
-        )
-
-    return OpenClawResult(
-        success=True,
-        markdown=completed.stdout,
-        stderr=completed.stderr,
-        called=True,
-        returncode=completed.returncode,
-        prompt_file=prompt_file,
-    )
+    finally:
+        if prompt_file and not retain_prompt_files:
+            prompt_file.unlink(missing_ok=True)

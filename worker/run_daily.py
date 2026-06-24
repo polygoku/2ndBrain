@@ -34,9 +34,9 @@ def run(config_path: str | None = None, dry_run: bool | None = None, mock: bool 
     effective_dry_run = bool(config["dry_run"]) if dry_run is None else dry_run
     if real:
         effective_dry_run = False
-    use_mock = mock or effective_dry_run
+    use_mock_sources = mock
 
-    items = load_source_items(config, use_mock=use_mock)
+    items = load_source_items(config, use_mock=use_mock_sources)
     registry = ProcessedRegistry(Path(config["processed_registry_path"]))
     pending = [item for item in items if not registry.is_processed(item)]
     skipped = len(items) - len(pending)
@@ -57,7 +57,7 @@ def run(config_path: str | None = None, dry_run: bool | None = None, mock: bool 
         return 0
 
     prompt = build_daily_prompt(pending, run_date=date.today())
-    client_result = run_openclaw(prompt, config, dry_run=effective_dry_run, mock=mock or effective_dry_run)
+    client_result = run_openclaw(prompt, config, dry_run=effective_dry_run, mock=mock)
     print(f"OpenClaw called or mocked: {'called' if client_result.called else 'mocked'}")
 
     if not client_result.success:
@@ -83,7 +83,7 @@ def run(config_path: str | None = None, dry_run: bool | None = None, mock: bool 
         projects = sorted({str(item.get("project")) for item in pending if item.get("project")})
         for project in projects:
             written.append(writer.write_project_notes(project, client_result.markdown, run_date=date.today()))
-        writer.append_log(f"Processed {len(pending)} item(s); dry_run={effective_dry_run}; mock={use_mock}.")
+        writer.append_log(f"Processed {len(pending)} item(s); dry_run={effective_dry_run}; mock={use_mock_sources}.")
     except WriteSafetyError as exc:
         print(f"FAIL: {exc}")
         print("Files written or would be written: 0")
@@ -108,7 +108,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run the second-brain daily worker")
     parser.add_argument("--config", help="Path to worker config JSON")
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--dry-run", action="store_true", help="Use mock OpenClaw output and do not write files")
+    mode.add_argument("--dry-run", action="store_true", help="Read configured sources, use mock OpenClaw output, and do not write files")
     mode.add_argument("--mock", action="store_true", help="Use mock sources and mock OpenClaw output")
     mode.add_argument("--real", action="store_true", help="Use real configured sources and OpenClaw command")
     args = parser.parse_args()
@@ -119,4 +119,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

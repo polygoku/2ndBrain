@@ -42,7 +42,7 @@ OpenClaw cannot access:
 
 ## Dry Run
 
-Dry run uses deterministic mock OpenClaw markdown and does not write generated files.
+Dry run reads the configured real sources, including local vault inbox files, and does not write generated files or update the processed registry. In this skeleton, dry-run uses deterministic generated markdown so you can test source parsing and write planning safely without requiring OpenClaw to be installed.
 
 ```bash
 python -m worker.run_daily --config config/secondbrain.example.json --dry-run
@@ -50,7 +50,7 @@ python -m worker.run_daily --config config/secondbrain.example.json --dry-run
 
 ## Mock Mode
 
-Mock mode uses fake calendar, email, and vault inbox items. It also uses deterministic mock OpenClaw markdown.
+Mock mode uses fake calendar, email, and vault inbox items. It also uses deterministic mock OpenClaw markdown, so it is the easiest command to run when OpenClaw is not installed.
 
 ```bash
 python -m worker.run_daily --config config/secondbrain.example.json --mock
@@ -68,6 +68,8 @@ python -m worker.run_daily --config config/secondbrain.local.json --real
 
 Before using real mode, create `config/secondbrain.local.json` from the example and set local VPS paths. Do not commit the local config if it contains machine-specific paths or secrets.
 
+OpenClaw prompt files are written as unique temporary `.md` files under `tmp_path` and cleaned up after the subprocess finishes. If prompt retention is needed for debugging later, set an explicit `retain_prompt_files` option; the default is `false`.
+
 ## Systemd Setup
 
 The VPS run script expects the repo at `/opt/secondbrain`.
@@ -77,6 +79,8 @@ sudo scripts/vps_install_systemd.sh
 ```
 
 The timer runs daily at 06:30 with `Persistent=true` and a randomized delay of up to 300 seconds.
+
+The service uses `ProtectHome=true`. If the eventual OpenClaw installation depends on files in the worker user's home directory, adjust the service hardening deliberately rather than broadening access by default.
 
 To run once manually:
 
@@ -107,7 +111,7 @@ The uninstall script disables the timer but does not delete systemd unit files. 
 ## Troubleshooting
 
 - If config loading fails, pass `--config` explicitly.
-- If OpenClaw is not installed, use `--dry-run` or `--mock`.
+- If OpenClaw is not installed, use `--mock`. Use `--dry-run` to test configured real source parsing and write planning without writing.
 - If writes are refused, check `allowed_write_paths` and look for path traversal or non-whitelisted paths.
 - If items repeat, inspect `/opt/secondbrain/state/processed_registry.json`.
 - If systemd cannot write, check `ReadWritePaths` in `secondbrain-daily.service`.

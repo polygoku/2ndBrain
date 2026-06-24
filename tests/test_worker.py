@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 from worker.config import load_config
+from worker.openclaw_client import run_openclaw
 from worker.sources.vault_inbox import load_vault_inbox_items
 from worker.state import ProcessedRegistry, item_hash
 from worker.writer import GeneratedWriter, WriteSafetyError
@@ -15,6 +16,8 @@ def make_config(tmp_path: Path, **overrides):
         "openclaw_command": "openclaw run --skill {skill} --input {prompt_file}",
         "openclaw_skill": "daily-brief",
         "openclaw_timeout_seconds": 180,
+        "openclaw_shell": False,
+        "retain_prompt_files": False,
         "vps_repo_path": str(tmp_path),
         "vps_vault_path": str(tmp_path / "vault"),
         "logs_path": str(tmp_path / "logs"),
@@ -108,6 +111,30 @@ def test_writer_refuses_non_whitelisted_paths(tmp_path):
         raise AssertionError("writer accepted a non-whitelisted path")
 
 
+def test_writer_rejects_file_path_prefix_abuse(tmp_path):
+    _, config = make_config(tmp_path)
+    writer = GeneratedWriter(config, dry_run=True)
+
+    try:
+        writer.append_generated_markdown("00-System/Automation Log.md/anything.md", "# Bad")
+    except WriteSafetyError:
+        pass
+    else:
+        raise AssertionError("writer accepted file-path prefix abuse")
+
+
+def test_writer_allows_exact_automation_log_path(tmp_path):
+    _, config = make_config(tmp_path, dry_run=False)
+    writer = GeneratedWriter(config, dry_run=False)
+
+    result = writer.append_log("Worker started")
+
+    assert result.wrote is True
+    assert result.relative_path == "00-System/Automation Log.md"
+    assert result.path.exists()
+    assert "Worker started" in result.path.read_text(encoding="utf-8")
+
+
 def test_writer_allows_approved_generated_paths(tmp_path):
     _, config = make_config(tmp_path, dry_run=False)
     writer = GeneratedWriter(config, dry_run=False)
@@ -136,6 +163,89 @@ def test_dry_run_writes_nothing(tmp_path):
     assert not (tmp_path / "generated").exists()
 
 
+def make_openclaw_helper(tmp_path: Path) -> Path:
+    helper = tmp_path / "fake_openclaw.py"
+    helper.write_text(
+        """import argparse
+import sys
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--prompt", required=True)
+parser.add_argument("--mode", choices=["success", "failure"], default="success")
+args = parser.parse_args()
+
+prompt_path = Path(args.prompt)
+assert prompt_path.exists()
+if args.mode == "failure":
+    print("failed on purpose", file=sys.stderr)
+    raise SystemExit(3)
+
+print("# Daily Briefing")
+print()
+print("- Prompt length:", len(prompt_path.read_text(encoding="utf-8")))
+""",
+        encoding="utf-8",
+    )
+    return helper
+
+
+def test_openclaw_prompt_temp_file_is_cleaned_up_after_success(tmp_path):
+    helper = make_openclaw_helper(tmp_path)
+    _, config = make_config(
+        tmp_path,
+        dry_run=False,
+        openclaw_command=f"{Path(sys.executable).as_posix()} {helper.as_posix()} --prompt {{prompt_file}} --mode success",
+    )
+
+    result = run_openclaw("hello", config, dry_run=False, mock=False)
+
+    assert result.success is True
+    assert result.prompt_file is not None
+    assert not result.prompt_file.exists()
+    assert not list((tmp_path / "tmp").glob("*.md"))
+
+
+def test_openclaw_prompt_temp_file_is_cleaned_up_after_failure(tmp_path):
+    helper = make_openclaw_helper(tmp_path)
+    _, config = make_config(
+        tmp_path,
+        dry_run=False,
+        openclaw_command=f"{Path(sys.executable).as_posix()} {helper.as_posix()} --prompt {{prompt_file}} --mode failure",
+    )
+
+    result = run_openclaw("hello", config, dry_run=False, mock=False)
+
+    assert result.success is False
+    assert result.prompt_file is not None
+    assert not result.prompt_file.exists()
+    assert not list((tmp_path / "tmp").glob("*.md"))
+
+
+def test_dry_run_reads_real_vault_inbox_without_writing(tmp_path):
+    vault = tmp_path / "vault"
+    inbox = vault / "01-Inbox" / "Inbox.md"
+    inbox.parent.mkdir(parents=True)
+    inbox.write_text("# Inbox\n\n## 2026-01-01 09:00\n\nReal dry-run source\n", encoding="utf-8")
+    before = inbox.read_text(encoding="utf-8")
+    config_path, data = make_config(tmp_path, dry_run=False)
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "worker.run_daily", "--config", str(config_path), "--dry-run"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "Items read: 1" in completed.stdout
+    assert "OpenClaw called or mocked: mocked" in completed.stdout
+    assert "DRY-RUN would append generated markdown" in completed.stdout
+    assert not Path(data["processed_registry_path"]).exists()
+    assert not (vault / "00-System").exists()
+    assert inbox.read_text(encoding="utf-8") == before
+
+
 def test_mock_run_daily_completes_without_openclaw_installed(tmp_path):
     config_path, data = make_config(tmp_path, dry_run=True)
 
@@ -156,10 +266,11 @@ def test_failed_openclaw_call_does_not_update_processed_registry(tmp_path):
     inbox = vault / "01-Inbox" / "Inbox.md"
     inbox.parent.mkdir(parents=True)
     inbox.write_text("# Inbox\n\n## 2026-01-01 09:00\n\nDo not process on failure\n", encoding="utf-8")
+    helper = make_openclaw_helper(tmp_path)
     config_path, data = make_config(
         tmp_path,
         dry_run=False,
-        openclaw_command=f"{sys.executable} -c \"import sys; sys.exit(2)\"",
+        openclaw_command=f"{Path(sys.executable).as_posix()} {helper.as_posix()} --prompt {{prompt_file}} --mode failure",
     )
 
     completed = subprocess.run(
@@ -170,7 +281,6 @@ def test_failed_openclaw_call_does_not_update_processed_registry(tmp_path):
     )
 
     assert completed.returncode == 1
-    assert "FAIL: OpenClaw command exited with code 2" in completed.stdout
+    assert "FAIL: OpenClaw command exited with code 3" in completed.stdout
     assert not Path(data["processed_registry_path"]).exists()
     assert inbox.read_text(encoding="utf-8").endswith("Do not process on failure\n")
-

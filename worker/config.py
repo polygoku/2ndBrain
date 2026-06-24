@@ -99,6 +99,13 @@ def validate_config(data: dict[str, Any], path: Path) -> None:
     if not isinstance(timeout, int) or timeout <= 0:
         raise ConfigError("Config field openclaw_timeout_seconds must be a positive integer")
 
+    for field in ("openclaw_shell", "retain_prompt_files"):
+        if field in data and not isinstance(data[field], bool):
+            raise ConfigError(f"Config field {field} must be true or false")
+
+    if data.get("openclaw_shell", False):
+        raise ConfigError("openclaw_shell=true is not supported in this safety skeleton")
+
 
 def load_config(cli_config: str | None = None, repo_root: Path | None = None) -> WorkerConfig:
     path = resolve_config_path(cli_config=cli_config, repo_root=repo_root)
@@ -112,4 +119,3 @@ def load_config(cli_config: str | None = None, repo_root: Path | None = None) ->
 
     validate_config(data, path)
     return WorkerConfig(path=path, data=data)
-
