@@ -58,7 +58,27 @@ def mock_markdown() -> str:
 """
 
 
-def run_openclaw(prompt: str, config: dict, dry_run: bool = False, mock: bool = False) -> OpenClawResult:
+def fixture_markdown(config: dict) -> str:
+    path = Path(config.get("fixture_openclaw_output_path", "openclaw-skills/daily-brief/examples/output.md"))
+    if not path.is_absolute():
+        repo_candidate = Path(config["vps_repo_path"]) / path
+        path = repo_candidate if repo_candidate.exists() else Path.cwd() / path
+    return path.read_text(encoding="utf-8")
+
+
+def run_openclaw(
+    prompt: str,
+    config: dict,
+    dry_run: bool = False,
+    mock: bool = False,
+    fixture: bool = False,
+) -> OpenClawResult:
+    if fixture:
+        return OpenClawResult(
+            success=True,
+            markdown=fixture_markdown(config),
+            called=False,
+        )
     if dry_run or mock:
         return OpenClawResult(
             success=True,

@@ -40,5 +40,10 @@
     "02-Projects/Business-Development/Process"
   ],
   "processed_marker": "<!-- processed-by-2ndbrain -->",
-  "dry_run": true
+  "dry_run": true,
+  "e2e_test_mode": true,
+  "e2e_test_output_prefix": "_test",
+  "fixture_gmail_path": "tests/fixtures/gmail_sample.json",
+  "fixture_calendar_path": "tests/fixtures/calendar_sample.json",
+  "fixture_vault_inbox_path": "tests/fixtures/vault_inbox_sample.md"
 }

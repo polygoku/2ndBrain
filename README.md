@@ -147,6 +147,18 @@ The VPS transport layer uses `rclone copy` to move vault files between Google Dr
 
 This layer does not use `sync`, does not connect Gmail or Calendar, does not call OpenClaw, and does not include credentials. See `docs/RCLONE_COPY_TRANSPORT.md`.
 
+## E2E dry-run harness
+
+The repo includes a fixture-based E2E harness for validating the worker pipeline without live Gmail, Calendar, Google Drive, rclone writes, or OpenClaw calls.
+
+```bash
+python -m worker.run_daily --config config/secondbrain.example.json --fixture
+python -m worker.run_daily --config config/secondbrain.example.json --fixture --test-output
+scripts/vps_e2e_dry_run.sh --config=config/secondbrain.example.json
+```
+
+Fixture test output is limited to `_test` folders under whitelisted generated-output locations. See `docs/E2E_DRY_RUN_HARNESS.md`.
+
 ## Next automation ideas for Codex
 
 See:
