@@ -120,6 +120,21 @@ Each day:
 4. Use `review` to see unprocessed inbox items.
 5. Keep final outputs in `Outputs` folders.
 
+## VPS Worker Skeleton
+
+This repo now includes the first skeleton for a fully unattended VPS worker that can eventually run OpenClaw automation.
+
+The worker is intentionally a safe controller: it reads source snapshots, builds bounded prompts, calls OpenClaw through a configurable command, validates returned markdown, and writes only through whitelisted generated-output paths. OpenClaw does not directly access Gmail, Calendar, Google Drive, rclone, or the Obsidian vault.
+
+Try the skeleton in dry-run mode against configured sources, or use mock mode when OpenClaw and real integrations are not installed:
+
+```bash
+python -m worker.run_daily --config config/secondbrain.example.json --dry-run
+python -m worker.run_daily --config config/secondbrain.example.json --mock
+```
+
+See `docs/VPS_WORKER_SKELETON.md` for the architecture, safety model, systemd timer setup, and next phases.
+
 ## Next automation ideas for Codex
 
 See:

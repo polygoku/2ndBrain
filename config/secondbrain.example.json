@@ -1,0 +1,29 @@
+{
+  "agent_provider": "openclaw",
+  "openclaw_command": "openclaw run --skill {skill} --input {prompt_file}",
+  "openclaw_skill": "daily-brief",
+  "openclaw_timeout_seconds": 180,
+  "openclaw_shell": false,
+  "retain_prompt_files": false,
+  "vps_repo_path": "/opt/secondbrain",
+  "vps_vault_path": "/opt/secondbrain/vault",
+  "logs_path": "/opt/secondbrain/logs",
+  "state_path": "/opt/secondbrain/state/state.json",
+  "tmp_path": "/opt/secondbrain/tmp",
+  "generated_path": "/opt/secondbrain/generated",
+  "processed_registry_path": "/opt/secondbrain/state/processed_registry.json",
+  "allowed_write_paths": [
+    "00-System/Daily Briefings",
+    "00-System/Automation Log.md",
+    "01-Inbox/Processed",
+    "01-Inbox/Review Queue.md",
+    "02-Projects/MTA-Transit/Process",
+    "02-Projects/DOB-PE/Process",
+    "02-Projects/Electrical-Design/Process",
+    "02-Projects/Dice-App/Process",
+    "02-Projects/Expenses/Process",
+    "02-Projects/Business-Development/Process"
+  ],
+  "processed_marker": "<!-- processed-by-2ndbrain -->",
+  "dry_run": true
+}
