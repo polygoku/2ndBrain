@@ -22,6 +22,14 @@ done
 fail() { printf 'FAIL: %s\n' "$1"; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
+validate_local_vault_path() {
+  local path="$1"
+  [[ -n "$path" ]] || fail "vps_vault_path is empty"
+  [[ "$path" != "/" ]] || fail "Refusing dangerous vps_vault_path: /"
+  [[ "$path" != "." ]] || fail "Refusing dangerous vps_vault_path: ."
+  [[ "$path" != *".."* ]] || fail "Refusing vps_vault_path containing '..': $path"
+}
+
 json_value() {
   python - "$CONFIG_FILE" "$1" <<'PY'
 import json
@@ -49,11 +57,15 @@ RCLONE_CONFIG="${RCLONE_CONFIG:-$CONFIGURED_RCLONE_CONFIG}"
 
 [[ -n "$RCLONE_BIN" ]] || fail "rclone_binary is empty"
 [[ -n "$REMOTE_VAULT" ]] || fail "rclone_remote_vault is empty"
-[[ -n "$LOCAL_VAULT" ]] || fail "vps_vault_path is empty"
+validate_local_vault_path "$LOCAL_VAULT"
 [[ -n "$RCLONE_CONFIG" ]] || fail "rclone config path is empty"
 
-mkdir -p "$LOCAL_VAULT"
-pass "Local vault destination ready"
+if [[ "${#DRY_RUN_ARGS[@]}" -gt 0 ]]; then
+  pass "DRY-RUN would ensure local vault destination exists: $LOCAL_VAULT"
+else
+  mkdir -p "$LOCAL_VAULT"
+  pass "Local vault destination ready"
+fi
 
 "$RCLONE_BIN" copy "$REMOTE_VAULT" "$LOCAL_VAULT" \
   --config "$RCLONE_CONFIG" \

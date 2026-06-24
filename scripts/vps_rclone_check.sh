@@ -1,7 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_FILE="${1:-config/secondbrain.local.json}"
+CONFIG_FILE="config/secondbrain.local.json"
+
+for arg in "$@"; do
+  case "$arg" in
+    --config=*)
+      CONFIG_FILE="${arg#--config=}"
+      ;;
+    *)
+      if [[ "$arg" == "$1" && "$arg" != --* ]]; then
+        CONFIG_FILE="$arg"
+      else
+        printf 'FAIL: Unknown argument: %s\n' "$arg"
+        exit 1
+      fi
+      ;;
+  esac
+done
 
 pass() { printf 'PASS: %s\n' "$1"; }
 warn() { printf 'WARN: %s\n' "$1"; }

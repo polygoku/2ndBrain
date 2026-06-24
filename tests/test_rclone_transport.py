@@ -1,5 +1,9 @@
 import json
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,3 +76,59 @@ def test_gitignore_protects_rclone_secrets():
         "config/secondbrain.local.json",
     ]:
         assert pattern in gitignore
+
+
+def test_pull_script_dry_run_guards_local_vault_creation():
+    pull_script = read("scripts/vps_pull_vault.sh")
+    assert 'if [[ "${#DRY_RUN_ARGS[@]}" -gt 0 ]]' in pull_script
+    assert 'DRY-RUN would ensure local vault destination exists' in pull_script
+    assert 'mkdir -p "$LOCAL_VAULT"' in pull_script
+
+
+def test_pull_script_dry_run_does_not_create_local_vault(tmp_path):
+    if shutil.which("bash") is None:
+        pytest.skip("bash is not available for shell-level dry-run validation")
+    bash_python = subprocess.run(
+        ["bash", "-lc", "command -v python"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if bash_python.returncode != 0:
+        pytest.skip("bash is available but python is not on bash PATH")
+
+    test_dir = ROOT / ".pytest_cache" / f"rclone-transport-{tmp_path.name}"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    local_vault = test_dir / "vault-destination"
+    config_path = test_dir / "test-config.json"
+    relative_config_path = config_path.relative_to(ROOT).as_posix()
+    relative_vault_path = local_vault.relative_to(ROOT).as_posix()
+    config_path.write_text(
+        json.dumps(
+            {
+                "rclone_binary": "true",
+                "rclone_remote_vault": "gdrive:Ky2ndBrain",
+                "rclone_config_path": str(tmp_path / "rclone.conf"),
+                "vps_vault_path": relative_vault_path,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            "bash",
+            "scripts/vps_pull_vault.sh",
+            "--dry-run",
+            f"--config={relative_config_path}",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert "DRY-RUN would ensure local vault destination exists" in completed.stdout
+    assert not local_vault.exists()
