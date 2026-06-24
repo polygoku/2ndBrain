@@ -50,13 +50,13 @@ python -m worker.run_daily --config config/secondbrain.example.json --dry-run
 
 ## Mock Mode
 
-Mock mode uses fake calendar, email, and vault inbox items. It also uses deterministic mock OpenClaw markdown, so it is the easiest command to run when OpenClaw is not installed.
+Mock mode uses fake calendar, email, and vault inbox items. It also uses deterministic mock OpenClaw markdown and always runs with no writes regardless of config, so it is the easiest command to run when OpenClaw is not installed.
 
 ```bash
 python -m worker.run_daily --config config/secondbrain.example.json --mock
 ```
 
-The example config has `"dry_run": true`, so mock mode with the example config does not write files.
+Mock mode does not write generated markdown and does not update the processed registry.
 
 ## Real Mode Later
 

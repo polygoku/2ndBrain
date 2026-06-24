@@ -34,6 +34,8 @@ def run(config_path: str | None = None, dry_run: bool | None = None, mock: bool 
     effective_dry_run = bool(config["dry_run"]) if dry_run is None else dry_run
     if real:
         effective_dry_run = False
+    if mock:
+        effective_dry_run = True
     use_mock_sources = mock
 
     items = load_source_items(config, use_mock=use_mock_sources)

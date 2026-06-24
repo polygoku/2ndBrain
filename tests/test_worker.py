@@ -261,6 +261,25 @@ def test_mock_run_daily_completes_without_openclaw_installed(tmp_path):
     assert not Path(data["processed_registry_path"]).exists()
 
 
+def test_mock_run_daily_forces_no_writes_even_when_config_allows_writes(tmp_path):
+    config_path, data = make_config(tmp_path, dry_run=False)
+    vault = Path(data["vps_vault_path"])
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "worker.run_daily", "--config", str(config_path), "--mock"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "OpenClaw called or mocked: mocked" in completed.stdout
+    assert "DRY-RUN would append generated markdown" in completed.stdout
+    assert "wrote:" not in completed.stdout
+    assert not Path(data["processed_registry_path"]).exists()
+    assert not (vault / "00-System").exists()
+
+
 def test_failed_openclaw_call_does_not_update_processed_registry(tmp_path):
     vault = tmp_path / "vault"
     inbox = vault / "01-Inbox" / "Inbox.md"
