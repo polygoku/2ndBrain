@@ -135,6 +135,12 @@ python -m worker.run_daily --config config/secondbrain.example.json --mock
 
 See `docs/VPS_WORKER_SKELETON.md` for the architecture, safety model, systemd timer setup, and next phases.
 
+## OpenClaw daily-brief skill
+
+This repo includes the `daily-brief` OpenClaw skill artifact and example/schema tests for safe markdown daily brief generation.
+
+This is an artifact-only step: it does not call OpenClaw, does not change worker runtime behavior, and does not connect Gmail, Calendar, Google Drive, or rclone.
+
 ## Next automation ideas for Codex
 
 See:
