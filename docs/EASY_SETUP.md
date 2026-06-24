@@ -39,6 +39,46 @@ This creates the vault at:
 ~/Documents/Ky Second Brain
 ```
 
+### Windows setup for Ky's Google Drive vault
+
+Your Obsidian vault is already located at:
+
+```text
+G:\My Drive\Ky2ndBrain
+```
+
+Create the local config file once:
+
+```powershell
+python scripts/second_brain.py configure --vault "G:\My Drive\Ky2ndBrain"
+```
+
+This writes:
+
+```text
+%USERPROFILE%\.2ndbrain\config.json
+```
+
+Example config contents:
+
+```json
+{
+  "vault_path": "G:\\My Drive\\Ky2ndBrain",
+  "default_project": "MTA-Transit"
+}
+```
+
+After that, these commands use the configured vault automatically:
+
+```powershell
+python scripts/second_brain.py init
+python scripts/second_brain.py daily
+python scripts/second_brain.py capture "First test note from Codex setup."
+python scripts/second_brain.py project MTA-Transit "First MTA project test note."
+python scripts/second_brain.py review
+python scripts/second_brain.py doctor
+```
+
 ## Step 3 — Open it in Obsidian
 
 In Obsidian:
@@ -185,6 +225,12 @@ Or set an environment variable:
 
 ```bash
 export SECOND_BRAIN_VAULT="/path/to/your/vault"
+```
+
+Or create a local config file:
+
+```bash
+python3 scripts/second_brain.py configure --vault "/path/to/your/vault"
 ```
 
 ### I want to change the vault name

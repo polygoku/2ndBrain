@@ -9,12 +9,14 @@ It never deletes files.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 DEFAULT_VAULT = Path.home() / "Documents" / "Ky Second Brain"
+DEFAULT_PROJECT = "MTA-Transit"
 
 FOLDERS = [
     "00-System",
@@ -228,12 +230,43 @@ PROJECT_CONTEXT = {
 }
 
 
+def config_path() -> Path:
+    return Path.home() / ".2ndbrain" / "config.json"
+
+
+def load_config(path: Path | None = None) -> dict[str, Any]:
+    path = path or config_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Config file is not valid JSON: {path}\n{exc}") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"Config file must contain a JSON object: {path}")
+    return data
+
+
+def save_config(vault: Path, default_project: str = DEFAULT_PROJECT, path: Path | None = None) -> Path:
+    path = path or config_path()
+    existing = load_config(path)
+    existing["vault_path"] = str(vault)
+    existing["default_project"] = default_project
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
 def vault_path(path_arg: str | None) -> Path:
     if path_arg:
         return Path(path_arg).expanduser().resolve()
     env_value = os.environ.get("SECOND_BRAIN_VAULT")
     if env_value:
         return Path(env_value).expanduser().resolve()
+    config = load_config()
+    config_value = config.get("vault_path")
+    if config_value:
+        return Path(str(config_value)).expanduser().resolve()
     return DEFAULT_VAULT
 
 
@@ -279,6 +312,13 @@ def init_vault(vault: Path) -> None:
         write_if_missing(project_root / "CHATGPT.md", f"# {project} Project Instructions\n\n## Purpose\n\n{description}\n\n## Assistant Role\n\nHelp Ky organize notes, summarize facts, identify risks, draft outputs, and track next actions for this project.\n\n## Standard Output\n\n1. Background\n2. Key facts\n3. Decisions\n4. Action items\n5. Risks / open issues\n6. Recommended next step\n")
 
     print(f"Second brain vault is ready at: {vault}")
+
+
+def configure(vault: Path, default_project: str = DEFAULT_PROJECT) -> None:
+    path = save_config(vault, default_project=default_project)
+    print(f"Config written to: {path}")
+    print(f"Vault path: {vault}")
+    print(f"Default project: {default_project}")
 
 
 def daily(vault: Path) -> None:
@@ -330,14 +370,65 @@ def review(vault: Path) -> None:
     print(f"Review queue written to: {path}")
 
 
+def doctor(vault: Path) -> int:
+    failures = 0
+    warnings = 0
+
+    def report(level: str, message: str) -> None:
+        print(f"{level}: {message}")
+
+    report("PASS", f"Configured vault path resolved to: {vault}")
+
+    if vault.exists() and vault.is_dir():
+        report("PASS", "Vault folder exists")
+    else:
+        report("FAIL", "Vault folder does not exist")
+        failures += 1
+
+    missing_folders = [folder for folder in FOLDERS if not (vault / folder).is_dir()]
+    if missing_folders:
+        report("FAIL", f"Missing required folders: {', '.join(missing_folders)}")
+        failures += 1
+    else:
+        report("PASS", "Required folders exist")
+
+    required_files = [
+        ("CHATGPT.md", vault / "00-System" / "CHATGPT.md"),
+        ("Inbox.md", vault / "01-Inbox" / "Inbox.md"),
+        ("Meeting Note Template.md", vault / "07-Templates" / "Meeting Note Template.md"),
+        ("Daily Review Template.md", vault / "07-Templates" / "Daily Review Template.md"),
+    ]
+    missing_files = [name for name, path in required_files if not path.is_file()]
+    if missing_files:
+        report("FAIL", f"Missing required files: {', '.join(missing_files)}")
+        failures += 1
+    else:
+        report("PASS", "CHATGPT.md, Inbox.md, and required templates exist")
+
+    if not config_path().exists() and "SECOND_BRAIN_VAULT" not in os.environ:
+        report("WARN", f"No local config file found at: {config_path()}")
+        warnings += 1
+
+    if failures:
+        report("FAIL", f"Doctor completed with {failures} failure(s) and {warnings} warning(s)")
+        return 1
+    report("PASS", f"Doctor completed with 0 failures and {warnings} warning(s)")
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ky Second Brain local CLI")
-    parser.add_argument("--vault", help="Path to Obsidian vault. Defaults to ~/Documents/Ky Second Brain or SECOND_BRAIN_VAULT.")
+    parser.add_argument("--vault", help="Path to Obsidian vault. Overrides SECOND_BRAIN_VAULT, local config, and the default fallback.")
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("init", help="Create vault folders and starter files")
     subparsers.add_parser("daily", help="Create today's daily note")
     subparsers.add_parser("review", help="Build Review Queue.md from inboxes")
+    subparsers.add_parser("doctor", help="Check local config and required vault files")
+
+    configure_parser = subparsers.add_parser("configure", help="Create or update the local config file")
+    configure_parser.add_argument("--vault", dest="configure_vault", required=True, help="Path to Obsidian vault")
+    configure_parser.add_argument("--default-project", default=DEFAULT_PROJECT, help="Default project name stored in config")
 
     capture_parser = subparsers.add_parser("capture", help="Append a note to the main inbox")
     capture_parser.add_argument("text")
@@ -349,6 +440,11 @@ def main() -> None:
     project_parser.add_argument("--source", help="Optional source label, such as email, meeting, call, or idea")
 
     args = parser.parse_args()
+    if args.command == "configure":
+        configure_vault = Path(args.configure_vault).expanduser().resolve()
+        configure(configure_vault, default_project=args.default_project)
+        return
+
     vault = vault_path(args.vault)
 
     if args.command == "init":
@@ -361,6 +457,8 @@ def main() -> None:
         capture(vault, args.text, source=args.source)
     elif args.command == "project":
         project_capture(vault, args.project, args.text, source=args.source)
+    elif args.command == "doctor":
+        raise SystemExit(doctor(vault))
     else:
         parser.print_help()
 
