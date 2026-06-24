@@ -47,10 +47,12 @@ Your Obsidian vault is already located at:
 G:\My Drive\Ky2ndBrain
 ```
 
-Create the local config file once:
+Run these first, in this order:
 
 ```powershell
 python scripts/second_brain.py configure --vault "G:\My Drive\Ky2ndBrain"
+python scripts/second_brain.py init
+python scripts/second_brain.py doctor
 ```
 
 This writes:
@@ -68,15 +70,13 @@ Example config contents:
 }
 ```
 
-After that, these commands use the configured vault automatically:
+After configuration, these commands use the configured vault automatically:
 
 ```powershell
-python scripts/second_brain.py init
 python scripts/second_brain.py daily
 python scripts/second_brain.py capture "First test note from Codex setup."
 python scripts/second_brain.py project MTA-Transit "First MTA project test note."
 python scripts/second_brain.py review
-python scripts/second_brain.py doctor
 ```
 
 ## Step 3 — Open it in Obsidian
@@ -180,6 +180,8 @@ Then open:
 ```text
 01-Inbox/Review Queue.md
 ```
+
+`01-Inbox/Review Queue.md` is a generated file. It may be replaced whenever the `review` command is run, but the original inbox notes are not modified.
 
 ## Daily habit
 

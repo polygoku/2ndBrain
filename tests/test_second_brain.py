@@ -57,7 +57,28 @@ def test_doctor_passes_after_init(monkeypatch, tmp_path, capsys):
     assert result == 0
     assert "PASS: Vault folder exists" in output
     assert "PASS: Required folders exist" in output
-    assert "PASS: CHATGPT.md, Inbox.md, and required templates exist" in output
+    assert "PASS: CHATGPT.md, Inbox.md, and all templates exist" in output
+
+
+def test_doctor_checks_every_template(monkeypatch, tmp_path, capsys):
+    home = tmp_path / "home"
+    vault = tmp_path / "vault"
+    missing_template = "Action Item Template.md"
+    set_home(monkeypatch, home)
+
+    for folder in second_brain.FOLDERS:
+        (vault / folder).mkdir(parents=True, exist_ok=True)
+    (vault / "00-System" / "CHATGPT.md").write_text("# CHATGPT\n", encoding="utf-8")
+    (vault / "01-Inbox" / "Inbox.md").write_text("# Inbox\n", encoding="utf-8")
+    for template_name, content in second_brain.TEMPLATES.items():
+        if template_name != missing_template:
+            (vault / "07-Templates" / template_name).write_text(content, encoding="utf-8")
+
+    result = second_brain.doctor(vault)
+
+    output = capsys.readouterr().out
+    assert result == 1
+    assert f"FAIL: Missing required files: {missing_template}" in output
 
 
 def test_doctor_fails_for_missing_vault(monkeypatch, tmp_path, capsys):

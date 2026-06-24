@@ -395,15 +395,17 @@ def doctor(vault: Path) -> int:
     required_files = [
         ("CHATGPT.md", vault / "00-System" / "CHATGPT.md"),
         ("Inbox.md", vault / "01-Inbox" / "Inbox.md"),
-        ("Meeting Note Template.md", vault / "07-Templates" / "Meeting Note Template.md"),
-        ("Daily Review Template.md", vault / "07-Templates" / "Daily Review Template.md"),
     ]
+    required_files.extend(
+        (template_name, vault / "07-Templates" / template_name)
+        for template_name in TEMPLATES
+    )
     missing_files = [name for name, path in required_files if not path.is_file()]
     if missing_files:
         report("FAIL", f"Missing required files: {', '.join(missing_files)}")
         failures += 1
     else:
-        report("PASS", "CHATGPT.md, Inbox.md, and required templates exist")
+        report("PASS", "CHATGPT.md, Inbox.md, and all templates exist")
 
     if not config_path().exists() and "SECOND_BRAIN_VAULT" not in os.environ:
         report("WARN", f"No local config file found at: {config_path()}")
