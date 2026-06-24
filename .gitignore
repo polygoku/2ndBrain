@@ -17,6 +17,8 @@ Ky Second Brain/
 # Worker local config and secrets
 config/secondbrain.local.json
 secrets/
+rclone.conf
+*.conf
 *.token
 *.tokens
 *.credentials

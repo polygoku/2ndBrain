@@ -141,6 +141,12 @@ This repo includes the `daily-brief` OpenClaw skill artifact and example/schema 
 
 This is an artifact-only step: it does not call OpenClaw, does not change worker runtime behavior, and does not connect Gmail, Calendar, Google Drive, or rclone.
 
+## Rclone copy-only vault transport
+
+The VPS transport layer uses `rclone copy` to move vault files between Google Drive and the VPS without deleting destination files.
+
+This layer does not use `sync`, does not connect Gmail or Calendar, does not call OpenClaw, and does not include credentials. See `docs/RCLONE_COPY_TRANSPORT.md`.
+
 ## Next automation ideas for Codex
 
 See:
