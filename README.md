@@ -165,9 +165,10 @@ The VPS dry-run workflow can validate real read-only Gmail and Calendar sources 
 
 ```bash
 scripts/vps_live_readonly_dry_run.sh --config=config/secondbrain.local.json --no-pull --skip-openclaw
+scripts/vps_live_readonly_dry_run.sh --config=config/secondbrain.local.json --no-pull --real-openclaw
 ```
 
-Gmail and Calendar remain disabled by default, OpenClaw is deterministic by default, and no production output paths or processed registry records are written. See `docs/VPS_LIVE_READONLY_DRY_RUN.md`.
+Gmail and Calendar remain disabled by default, OpenClaw is deterministic by default unless `--real-openclaw` is explicit, and no production output paths or processed registry records are written. See `docs/VPS_LIVE_READONLY_DRY_RUN.md`.
 
 ## Next automation ideas for Codex
 
