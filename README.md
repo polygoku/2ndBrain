@@ -190,6 +190,12 @@ scripts/vps_install_timer.sh --dry-run --repo=/opt/secondbrain --config=/opt/sec
 
 The installer does not enable the timer unless `--enable` is explicit and never runs the production daily brief during install. See `docs/SCHEDULED_EXECUTION.md`.
 
+## Final VPS operations runbook
+
+The final operator docs walk through first-run validation, staged rollout, health/status checks, emergency stop, rollback, and scheduled production operation.
+
+Start with `docs/VPS_FIRST_RUN_CHECKLIST.md`, then use `docs/FINAL_OPERATIONS_RUNBOOK.md` and `docs/ROLLBACK_AND_RECOVERY.md` for ongoing operation.
+
 ## Next automation ideas for Codex
 
 See:
