@@ -102,7 +102,8 @@ class GeneratedWriter:
         if final_path.exists() and self.processed_marker not in final_path.read_text(encoding="utf-8"):
             raise WriteSafetyError(f"Refusing to append to existing non-generated note: {normalized}")
 
-        self._stage(normalized, content)
+        if not self.e2e_test_output_only:
+            self._stage(normalized, content)
         final_path.parent.mkdir(parents=True, exist_ok=True)
         with final_path.open("a", encoding="utf-8") as handle:
             handle.write(f"\n{content}")

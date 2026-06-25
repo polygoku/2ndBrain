@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from worker.sources.fixture_sources import load_fixture_items
+from worker.state import ProcessedRegistry
 from worker.writer import GeneratedWriter, WriteSafetyError
 
 
@@ -57,6 +58,18 @@ def make_e2e_config(tmp_path: Path, **overrides):
     return path, data
 
 
+def generated_markdown_paths(root: Path) -> list[Path]:
+    if not root.exists():
+        return []
+    return [path for path in root.rglob("*.md") if path.is_file()]
+
+
+def assert_only_test_markdown_files(root: Path) -> None:
+    for path in generated_markdown_paths(root):
+        parts = path.relative_to(root).parts
+        assert "_test" in parts, f"Non-test markdown file was created: {path}"
+
+
 def test_fixture_loader_reads_gmail_calendar_and_vault_sources(tmp_path):
     _, config = make_e2e_config(tmp_path)
 
@@ -69,6 +82,14 @@ def test_fixture_loader_reads_gmail_calendar_and_vault_sources(tmp_path):
     }
     assert any(item.get("project") == "MTA-Transit" for item in items)
     assert all(item.get("item_hash") for item in items)
+
+
+def test_calendar_fixture_includes_today_tomorrow_and_project_item():
+    events = json.loads((ROOT / "tests" / "fixtures" / "calendar_sample.json").read_text(encoding="utf-8"))
+
+    assert any(str(event["starts_at"]).startswith("2026-06-24") for event in events)
+    assert any(str(event["starts_at"]).startswith("2026-06-25") for event in events)
+    assert any(event.get("project") for event in events)
 
 
 def test_prompt_injection_fixture_is_present_but_untrusted(tmp_path):
@@ -127,7 +148,44 @@ def test_fixture_test_output_writes_only_test_paths_and_no_registry(tmp_path):
     assert (vault / "02-Projects" / "MTA-Transit" / "Process" / "_test" / f"{today} - Generated Notes.md").exists()
     assert not (vault / "00-System" / "Daily Briefings" / f"{today}.md").exists()
     assert not (vault / "01-Inbox" / "Processed" / f"{today} - Generated Notes.md").exists()
+    assert not (Path(data["generated_path"]) / "staging").exists()
+    assert_only_test_markdown_files(vault)
     assert not Path(data["processed_registry_path"]).exists()
+
+
+def test_fixture_test_output_no_pending_does_not_write_production_log_or_registry(tmp_path):
+    config_path, data = make_e2e_config(tmp_path, dry_run=False)
+    items = load_fixture_items(data)
+    registry = ProcessedRegistry(Path(data["processed_registry_path"]))
+    for item in items:
+        registry.add(item, output_path="fixture-preseeded.md")
+    registry.save()
+    before_registry = Path(data["processed_registry_path"]).read_text(encoding="utf-8")
+    vault = Path(data["vps_vault_path"])
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "worker.run_daily",
+            "--config",
+            str(config_path),
+            "--fixture",
+            "--test-output",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert "Items skipped as already processed" in completed.stdout
+    assert "Files written or would be written: 0" in completed.stdout
+    assert not (vault / "00-System" / "Automation Log.md").exists()
+    assert Path(data["processed_registry_path"]).read_text(encoding="utf-8") == before_registry
+    assert not (Path(data["generated_path"]) / "staging").exists()
+    assert_only_test_markdown_files(vault)
 
 
 def test_e2e_test_mode_refuses_production_generated_paths(tmp_path):

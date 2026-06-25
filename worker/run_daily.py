@@ -67,6 +67,11 @@ def run(
     print(f"Items skipped as already processed: {skipped}")
 
     if not pending:
+        if fixture:
+            print("OpenClaw called or mocked: no")
+            print("Files written or would be written: 0")
+            print("Failures: 0")
+            return 0
         writer = GeneratedWriter(config, dry_run=effective_dry_run)
         try:
             writer.append_log("No pending items found.")
