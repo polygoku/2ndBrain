@@ -48,6 +48,12 @@ LIVE_READONLY_STRING_FIELDS = [
     "live_readonly_output_prefix",
 ]
 
+CODEX_HANDOFF_STRING_FIELDS = [
+    "codex_handoff_inbox_path",
+    "codex_handoff_outbox_path",
+    "codex_handoff_output_prefix",
+]
+
 
 class ConfigError(ValueError):
     """Raised when worker configuration is missing or invalid."""
@@ -138,11 +144,18 @@ def validate_config(data: dict[str, Any], path: Path) -> None:
     if "production_output_enabled" in data and not isinstance(data["production_output_enabled"], bool):
         raise ConfigError("Config field production_output_enabled must be true or false")
 
+    if "codex_handoff_enabled" in data and not isinstance(data["codex_handoff_enabled"], bool):
+        raise ConfigError("Config field codex_handoff_enabled must be true or false")
+
     for field in E2E_STRING_FIELDS:
         if field in data and (not isinstance(data[field], str) or not data[field].strip()):
             raise ConfigError(f"Config field {field} must be a non-empty string")
 
     for field in LIVE_READONLY_STRING_FIELDS:
+        if field in data and (not isinstance(data[field], str) or not data[field].strip()):
+            raise ConfigError(f"Config field {field} must be a non-empty string")
+
+    for field in CODEX_HANDOFF_STRING_FIELDS:
         if field in data and (not isinstance(data[field], str) or not data[field].strip()):
             raise ConfigError(f"Config field {field} must be a non-empty string")
 
