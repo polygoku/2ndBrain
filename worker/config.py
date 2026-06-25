@@ -25,6 +25,13 @@ REQUIRED_FIELDS = [
     "dry_run",
 ]
 
+E2E_STRING_FIELDS = [
+    "e2e_test_output_prefix",
+    "fixture_gmail_path",
+    "fixture_calendar_path",
+    "fixture_vault_inbox_path",
+]
+
 
 class ConfigError(ValueError):
     """Raised when worker configuration is missing or invalid."""
@@ -105,6 +112,13 @@ def validate_config(data: dict[str, Any], path: Path) -> None:
 
     if data.get("openclaw_shell", False):
         raise ConfigError("openclaw_shell=true is not supported in this safety skeleton")
+
+    if "e2e_test_mode" in data and not isinstance(data["e2e_test_mode"], bool):
+        raise ConfigError("Config field e2e_test_mode must be true or false")
+
+    for field in E2E_STRING_FIELDS:
+        if field in data and (not isinstance(data[field], str) or not data[field].strip()):
+            raise ConfigError(f"Config field {field} must be a non-empty string")
 
 
 def load_config(cli_config: str | None = None, repo_root: Path | None = None) -> WorkerConfig:

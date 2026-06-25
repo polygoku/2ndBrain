@@ -10,6 +10,7 @@ from typing import Any
 from worker.config import ConfigError, load_config
 from worker.openclaw_client import run_openclaw
 from worker.prompt_builder import build_daily_prompt
+from worker.sources.fixture_sources import load_fixture_items
 from worker.sources.mock_sources import load_mock_items
 from worker.sources.vault_inbox import load_vault_inbox_items
 from worker.state import ProcessedRegistry
@@ -17,13 +18,22 @@ from worker.validators import validate_markdown
 from worker.writer import GeneratedWriter, WriteSafetyError
 
 
-def load_source_items(config: dict[str, Any], use_mock: bool) -> list[dict[str, Any]]:
+def load_source_items(config: dict[str, Any], use_mock: bool, use_fixture: bool = False) -> list[dict[str, Any]]:
+    if use_fixture:
+        return load_fixture_items(config)
     if use_mock:
         return load_mock_items()
     return load_vault_inbox_items(config["vps_vault_path"])
 
 
-def run(config_path: str | None = None, dry_run: bool | None = None, mock: bool = False, real: bool = False) -> int:
+def run(
+    config_path: str | None = None,
+    dry_run: bool | None = None,
+    mock: bool = False,
+    real: bool = False,
+    fixture: bool = False,
+    test_output: bool = False,
+) -> int:
     try:
         loaded = load_config(config_path)
     except ConfigError as exc:
@@ -36,9 +46,19 @@ def run(config_path: str | None = None, dry_run: bool | None = None, mock: bool 
         effective_dry_run = False
     if mock:
         effective_dry_run = True
+    if fixture:
+        effective_dry_run = not test_output
     use_mock_sources = mock
+    use_fixture_sources = fixture
 
-    items = load_source_items(config, use_mock=use_mock_sources)
+    if test_output and not fixture:
+        print("FAIL: --test-output can only be used with --fixture")
+        return 2
+    if fixture and not bool(config.get("e2e_test_mode", False)):
+        print("FAIL: --fixture requires e2e_test_mode=true")
+        return 2
+
+    items = load_source_items(config, use_mock=use_mock_sources, use_fixture=use_fixture_sources)
     registry = ProcessedRegistry(Path(config["processed_registry_path"]))
     pending = [item for item in items if not registry.is_processed(item)]
     skipped = len(items) - len(pending)
@@ -47,6 +67,11 @@ def run(config_path: str | None = None, dry_run: bool | None = None, mock: bool 
     print(f"Items skipped as already processed: {skipped}")
 
     if not pending:
+        if fixture:
+            print("OpenClaw called or mocked: no")
+            print("Files written or would be written: 0")
+            print("Failures: 0")
+            return 0
         writer = GeneratedWriter(config, dry_run=effective_dry_run)
         try:
             writer.append_log("No pending items found.")
@@ -59,7 +84,7 @@ def run(config_path: str | None = None, dry_run: bool | None = None, mock: bool 
         return 0
 
     prompt = build_daily_prompt(pending, run_date=date.today())
-    client_result = run_openclaw(prompt, config, dry_run=effective_dry_run, mock=mock)
+    client_result = run_openclaw(prompt, config, dry_run=effective_dry_run, mock=mock, fixture=fixture)
     print(f"OpenClaw called or mocked: {'called' if client_result.called else 'mocked'}")
 
     if not client_result.success:
@@ -77,22 +102,33 @@ def run(config_path: str | None = None, dry_run: bool | None = None, mock: bool 
         print("Failures: 1")
         return 1
 
-    writer = GeneratedWriter(config, dry_run=effective_dry_run)
+    writer = GeneratedWriter(config, dry_run=effective_dry_run, e2e_test_output_only=fixture)
     written = []
     try:
-        daily_result = writer.write_daily_briefing(client_result.markdown, run_date=date.today())
-        written.append(daily_result)
+        if fixture:
+            daily_result = writer.write_test_daily_briefing(client_result.markdown, run_date=date.today())
+            written.append(daily_result)
+            written.append(writer.write_test_processed_notes(client_result.markdown, run_date=date.today()))
+        else:
+            daily_result = writer.write_daily_briefing(client_result.markdown, run_date=date.today())
+            written.append(daily_result)
         projects = sorted({str(item.get("project")) for item in pending if item.get("project")})
         for project in projects:
-            written.append(writer.write_project_notes(project, client_result.markdown, run_date=date.today()))
-        writer.append_log(f"Processed {len(pending)} item(s); dry_run={effective_dry_run}; mock={use_mock_sources}.")
+            if fixture:
+                written.append(writer.write_test_project_notes(project, client_result.markdown, run_date=date.today()))
+            else:
+                written.append(writer.write_project_notes(project, client_result.markdown, run_date=date.today()))
+        if not fixture:
+            writer.append_log(
+                f"Processed {len(pending)} item(s); dry_run={effective_dry_run}; mock={use_mock_sources}; fixture={fixture}."
+            )
     except WriteSafetyError as exc:
         print(f"FAIL: {exc}")
         print("Files written or would be written: 0")
         print("Failures: 1")
         return 1
 
-    if not effective_dry_run:
+    if not effective_dry_run and not fixture:
         output_path = written[0].relative_path if written else ""
         for item in pending:
             registry.add(item, output_path=output_path)
@@ -113,10 +149,21 @@ def main() -> None:
     mode.add_argument("--dry-run", action="store_true", help="Read configured sources, use mock OpenClaw output, and do not write files")
     mode.add_argument("--mock", action="store_true", help="Use mock sources and mock OpenClaw output")
     mode.add_argument("--real", action="store_true", help="Use real configured sources and OpenClaw command")
+    mode.add_argument("--fixture", action="store_true", help="Use local fixture sources and fixture OpenClaw output")
+    parser.add_argument("--test-output", action="store_true", help="With --fixture, write only safe _test generated outputs")
     args = parser.parse_args()
 
     dry_run = True if args.dry_run else None
-    raise SystemExit(run(config_path=args.config, dry_run=dry_run, mock=args.mock, real=args.real))
+    raise SystemExit(
+        run(
+            config_path=args.config,
+            dry_run=dry_run,
+            mock=args.mock,
+            real=args.real,
+            fixture=args.fixture,
+            test_output=args.test_output,
+        )
+    )
 
 
 if __name__ == "__main__":

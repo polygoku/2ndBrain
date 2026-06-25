@@ -1,0 +1,25 @@
+[
+  {
+    "id": "calendar-fixture-001",
+    "title": "MTA GCMOC check-in",
+    "starts_at": "2026-06-24T09:00:00-04:00",
+    "ends_at": "2026-06-24T09:30:00-04:00",
+    "project": "MTA-Transit",
+    "notes": "Discuss open action items, staffing coverage, and client follow-up assumptions."
+  },
+  {
+    "id": "calendar-fixture-002",
+    "title": "Tomorrow planning review",
+    "starts_at": "2026-06-25T10:00:00-04:00",
+    "ends_at": "2026-06-25T10:30:00-04:00",
+    "notes": "Review tomorrow's priorities and confirm which follow-ups need owners before the next work block."
+  },
+  {
+    "id": "calendar-fixture-003",
+    "title": "DOB filing review",
+    "starts_at": "2026-06-24T14:00:00-04:00",
+    "ends_at": "2026-06-24T15:00:00-04:00",
+    "project": "DOB-PE",
+    "notes": "Review DOB/PE documentation, plan-note checklist items, and open comments before submission."
+  }
+]

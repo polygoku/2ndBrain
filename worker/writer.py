@@ -38,7 +38,7 @@ def normalize_relative_path(relative_path: str) -> str:
 
 
 class GeneratedWriter:
-    def __init__(self, config: dict, dry_run: bool = False):
+    def __init__(self, config: dict, dry_run: bool = False, e2e_test_output_only: bool = False):
         self.config = config
         self.dry_run = dry_run
         self.vault_path = Path(config["vps_vault_path"])
@@ -49,6 +49,9 @@ class GeneratedWriter:
         self.allowed_exact_paths = self.allowed_write_paths & EXACT_ALLOWED_PATHS
         self.allowed_directory_prefixes = self.allowed_write_paths - EXACT_ALLOWED_PATHS
         self.processed_marker = config["processed_marker"]
+        self.e2e_test_mode = bool(config.get("e2e_test_mode", False))
+        self.e2e_test_output_only = e2e_test_output_only
+        self.e2e_test_output_prefix = config.get("e2e_test_output_prefix", "_test")
         self.intended_paths: list[Path] = []
 
     def is_allowed(self, relative_path: str) -> bool:
@@ -86,6 +89,8 @@ class GeneratedWriter:
 
     def append_generated_markdown(self, relative_path: str, markdown: str) -> WriteResult:
         normalized = normalize_relative_path(relative_path)
+        if self.e2e_test_output_only and not self._is_e2e_test_path(normalized):
+            raise WriteSafetyError(f"E2E test mode only allows _test generated paths: {relative_path}")
         final_path = self._final_path(normalized)
         content = self._with_marker(markdown)
         self.intended_paths.append(final_path)
@@ -97,7 +102,8 @@ class GeneratedWriter:
         if final_path.exists() and self.processed_marker not in final_path.read_text(encoding="utf-8"):
             raise WriteSafetyError(f"Refusing to append to existing non-generated note: {normalized}")
 
-        self._stage(normalized, content)
+        if not self.e2e_test_output_only:
+            self._stage(normalized, content)
         final_path.parent.mkdir(parents=True, exist_ok=True)
         with final_path.open("a", encoding="utf-8") as handle:
             handle.write(f"\n{content}")
@@ -130,5 +136,57 @@ class GeneratedWriter:
         current_date = (run_date or date.today()).isoformat()
         return self.append_generated_markdown(
             f"02-Projects/{safe_project}/Process/{current_date} - Generated Notes.md",
+            markdown,
+        )
+
+    def _safe_e2e_prefix(self) -> str:
+        raw_prefix = str(self.e2e_test_output_prefix).strip()
+        if "\\" in raw_prefix:
+            raise WriteSafetyError(f"Unsafe E2E test output prefix: {raw_prefix}")
+        prefix = normalize_relative_path(raw_prefix)
+        if "/" in prefix:
+            raise WriteSafetyError(f"E2E test output prefix must be a single folder name: {raw_prefix}")
+        return prefix
+
+    def _is_e2e_test_path(self, normalized: str) -> bool:
+        prefix = self._safe_e2e_prefix()
+        allowed_segments = (
+            f"00-System/Daily Briefings/{prefix}/",
+            f"01-Inbox/Processed/{prefix}/",
+        )
+        if normalized.startswith(allowed_segments):
+            return True
+        for allowed in self.allowed_directory_prefixes:
+            if allowed.startswith("02-Projects/") and allowed.endswith("/Process"):
+                if normalized.startswith(f"{allowed}/{prefix}/"):
+                    return True
+        return False
+
+    def _require_e2e_test_mode(self) -> str:
+        if not self.e2e_test_mode:
+            raise WriteSafetyError("E2E test output requires e2e_test_mode=true")
+        return self._safe_e2e_prefix()
+
+    def write_test_daily_briefing(self, markdown: str, run_date: date | None = None) -> WriteResult:
+        prefix = self._require_e2e_test_mode()
+        current_date = (run_date or date.today()).isoformat()
+        return self.append_generated_markdown(f"00-System/Daily Briefings/{prefix}/{current_date}.md", markdown)
+
+    def write_test_processed_notes(self, markdown: str, run_date: date | None = None) -> WriteResult:
+        prefix = self._require_e2e_test_mode()
+        current_date = (run_date or date.today()).isoformat()
+        return self.append_generated_markdown(
+            f"01-Inbox/Processed/{prefix}/{current_date} - Generated Notes.md",
+            markdown,
+        )
+
+    def write_test_project_notes(self, project: str, markdown: str, run_date: date | None = None) -> WriteResult:
+        prefix = self._require_e2e_test_mode()
+        safe_project = normalize_relative_path(project)
+        if "/" in safe_project:
+            raise WriteSafetyError(f"Unsafe project name: {project}")
+        current_date = (run_date or date.today()).isoformat()
+        return self.append_generated_markdown(
+            f"02-Projects/{safe_project}/Process/{prefix}/{current_date} - Generated Notes.md",
             markdown,
         )
