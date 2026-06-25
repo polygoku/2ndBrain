@@ -40,6 +40,7 @@ def run(
     real: bool = False,
     fixture: bool = False,
     test_output: bool = False,
+    live_readonly_test: bool = False,
 ) -> int:
     try:
         loaded = load_config(config_path)
@@ -55,8 +56,11 @@ def run(
         effective_dry_run = True
     if fixture:
         effective_dry_run = not test_output
+    if live_readonly_test:
+        effective_dry_run = False
     use_mock_sources = mock
     use_fixture_sources = fixture
+    test_output_only = fixture or live_readonly_test
 
     if test_output and not fixture:
         print("FAIL: --test-output can only be used with --fixture")
@@ -64,6 +68,16 @@ def run(
     if fixture and not bool(config.get("e2e_test_mode", False)):
         print("FAIL: --fixture requires e2e_test_mode=true")
         return 2
+    if live_readonly_test:
+        if not bool(config.get("live_readonly_test_mode", False)):
+            print("FAIL: --live-readonly-test requires live_readonly_test_mode=true")
+            return 2
+        if not (bool(config.get("gmail_enabled", False)) or bool(config.get("calendar_enabled", False))):
+            print("FAIL: --live-readonly-test requires gmail_enabled=true or calendar_enabled=true")
+            return 2
+        if str(config.get("live_readonly_output_prefix", "_test")).strip() != "_test":
+            print("FAIL: --live-readonly-test requires live_readonly_output_prefix=\"_test\"")
+            return 2
 
     try:
         items = load_source_items(config, use_mock=use_mock_sources, use_fixture=use_fixture_sources)
@@ -78,7 +92,7 @@ def run(
     print(f"Items skipped as already processed: {skipped}")
 
     if not pending:
-        if fixture:
+        if test_output_only:
             print("OpenClaw called or mocked: no")
             print("Files written or would be written: 0")
             print("Failures: 0")
@@ -95,7 +109,13 @@ def run(
         return 0
 
     prompt = build_daily_prompt(pending, run_date=date.today())
-    client_result = run_openclaw(prompt, config, dry_run=effective_dry_run, mock=mock, fixture=fixture)
+    client_result = run_openclaw(
+        prompt,
+        config,
+        dry_run=effective_dry_run or live_readonly_test,
+        mock=mock,
+        fixture=fixture,
+    )
     print(f"OpenClaw called or mocked: {'called' if client_result.called else 'mocked'}")
 
     if not client_result.success:
@@ -113,10 +133,10 @@ def run(
         print("Failures: 1")
         return 1
 
-    writer = GeneratedWriter(config, dry_run=effective_dry_run, e2e_test_output_only=fixture)
+    writer = GeneratedWriter(config, dry_run=effective_dry_run, e2e_test_output_only=test_output_only)
     written = []
     try:
-        if fixture:
+        if test_output_only:
             daily_result = writer.write_test_daily_briefing(client_result.markdown, run_date=date.today())
             written.append(daily_result)
             written.append(writer.write_test_processed_notes(client_result.markdown, run_date=date.today()))
@@ -125,11 +145,11 @@ def run(
             written.append(daily_result)
         projects = sorted({str(item.get("project")) for item in pending if item.get("project")})
         for project in projects:
-            if fixture:
+            if test_output_only:
                 written.append(writer.write_test_project_notes(project, client_result.markdown, run_date=date.today()))
             else:
                 written.append(writer.write_project_notes(project, client_result.markdown, run_date=date.today()))
-        if not fixture:
+        if not test_output_only:
             writer.append_log(
                 f"Processed {len(pending)} item(s); dry_run={effective_dry_run}; mock={use_mock_sources}; fixture={fixture}."
             )
@@ -139,7 +159,7 @@ def run(
         print("Failures: 1")
         return 1
 
-    if not effective_dry_run and not fixture:
+    if not effective_dry_run and not test_output_only:
         output_path = written[0].relative_path if written else ""
         for item in pending:
             registry.add(item, output_path=output_path)
@@ -161,6 +181,7 @@ def main() -> None:
     mode.add_argument("--mock", action="store_true", help="Use mock sources and mock OpenClaw output")
     mode.add_argument("--real", action="store_true", help="Use real configured sources and OpenClaw command")
     mode.add_argument("--fixture", action="store_true", help="Use local fixture sources and fixture OpenClaw output")
+    mode.add_argument("--live-readonly-test", action="store_true", help="Use configured read-only sources and write only _test outputs")
     parser.add_argument("--test-output", action="store_true", help="With --fixture, write only safe _test generated outputs")
     args = parser.parse_args()
 
@@ -173,6 +194,7 @@ def main() -> None:
             real=args.real,
             fixture=args.fixture,
             test_output=args.test_output,
+            live_readonly_test=args.live_readonly_test,
         )
     )
 

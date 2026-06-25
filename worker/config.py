@@ -44,6 +44,10 @@ CALENDAR_STRING_FIELDS = [
     "calendar_timezone",
 ]
 
+LIVE_READONLY_STRING_FIELDS = [
+    "live_readonly_output_prefix",
+]
+
 
 class ConfigError(ValueError):
     """Raised when worker configuration is missing or invalid."""
@@ -128,7 +132,14 @@ def validate_config(data: dict[str, Any], path: Path) -> None:
     if "e2e_test_mode" in data and not isinstance(data["e2e_test_mode"], bool):
         raise ConfigError("Config field e2e_test_mode must be true or false")
 
+    if "live_readonly_test_mode" in data and not isinstance(data["live_readonly_test_mode"], bool):
+        raise ConfigError("Config field live_readonly_test_mode must be true or false")
+
     for field in E2E_STRING_FIELDS:
+        if field in data and (not isinstance(data[field], str) or not data[field].strip()):
+            raise ConfigError(f"Config field {field} must be a non-empty string")
+
+    for field in LIVE_READONLY_STRING_FIELDS:
         if field in data and (not isinstance(data[field], str) or not data[field].strip()):
             raise ConfigError(f"Config field {field} must be a non-empty string")
 

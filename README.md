@@ -159,6 +159,16 @@ scripts/vps_e2e_dry_run.sh --config=config/secondbrain.example.json
 
 Fixture test output is limited to `_test` folders under whitelisted generated-output locations. See `docs/E2E_DRY_RUN_HARNESS.md`.
 
+## Controlled VPS live read-only dry run
+
+The VPS dry-run workflow can validate real read-only Gmail and Calendar sources against the local vault copy while writing only `_test` generated outputs.
+
+```bash
+scripts/vps_live_readonly_dry_run.sh --config=config/secondbrain.local.json --no-pull --skip-openclaw
+```
+
+Gmail and Calendar remain disabled by default, OpenClaw is deterministic by default, and no production output paths or processed registry records are written. See `docs/VPS_LIVE_READONLY_DRY_RUN.md`.
+
 ## Next automation ideas for Codex
 
 See:
