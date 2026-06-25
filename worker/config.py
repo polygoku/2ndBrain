@@ -135,6 +135,9 @@ def validate_config(data: dict[str, Any], path: Path) -> None:
     if "live_readonly_test_mode" in data and not isinstance(data["live_readonly_test_mode"], bool):
         raise ConfigError("Config field live_readonly_test_mode must be true or false")
 
+    if "production_output_enabled" in data and not isinstance(data["production_output_enabled"], bool):
+        raise ConfigError("Config field production_output_enabled must be true or false")
+
     for field in E2E_STRING_FIELDS:
         if field in data and (not isinstance(data[field], str) or not data[field].strip()):
             raise ConfigError(f"Config field {field} must be a non-empty string")

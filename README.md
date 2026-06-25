@@ -170,6 +170,16 @@ scripts/vps_live_readonly_dry_run.sh --config=config/secondbrain.local.json --no
 
 Gmail and Calendar remain disabled by default, OpenClaw is deterministic by default unless `--real-openclaw` is explicit, and no production output paths or processed registry records are written. See `docs/VPS_LIVE_READONLY_DRY_RUN.md`.
 
+## Production daily brief output
+
+Production output is gated by `production_output_enabled=true` and writes validated generated markdown only to whitelisted Obsidian production paths.
+
+```bash
+scripts/vps_production_daily_brief.sh --config=config/secondbrain.local.json --no-pull --no-push
+```
+
+The worker still does not modify Gmail, Calendar, Google Drive directly, or use destructive rclone behavior. See `docs/PRODUCTION_DAILY_BRIEF_OUTPUT.md`.
+
 ## Next automation ideas for Codex
 
 See:
