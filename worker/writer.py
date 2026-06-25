@@ -50,8 +50,12 @@ class GeneratedWriter:
         self.allowed_directory_prefixes = self.allowed_write_paths - EXACT_ALLOWED_PATHS
         self.processed_marker = config["processed_marker"]
         self.e2e_test_mode = bool(config.get("e2e_test_mode", False))
+        self.live_readonly_test_mode = bool(config.get("live_readonly_test_mode", False))
         self.e2e_test_output_only = e2e_test_output_only
-        self.e2e_test_output_prefix = config.get("e2e_test_output_prefix", "_test")
+        if self.live_readonly_test_mode:
+            self.e2e_test_output_prefix = config.get("live_readonly_output_prefix", "_test")
+        else:
+            self.e2e_test_output_prefix = config.get("e2e_test_output_prefix", "_test")
         self.intended_paths: list[Path] = []
 
     def is_allowed(self, relative_path: str) -> bool:
@@ -163,8 +167,8 @@ class GeneratedWriter:
         return False
 
     def _require_e2e_test_mode(self) -> str:
-        if not self.e2e_test_mode:
-            raise WriteSafetyError("E2E test output requires e2e_test_mode=true")
+        if not (self.e2e_test_mode or self.live_readonly_test_mode):
+            raise WriteSafetyError("Test output requires e2e_test_mode=true or live_readonly_test_mode=true")
         return self._safe_e2e_prefix()
 
     def write_test_daily_briefing(self, markdown: str, run_date: date | None = None) -> WriteResult:
