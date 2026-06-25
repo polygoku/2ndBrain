@@ -32,6 +32,12 @@ E2E_STRING_FIELDS = [
     "fixture_vault_inbox_path",
 ]
 
+GMAIL_STRING_FIELDS = [
+    "gmail_credentials_path",
+    "gmail_token_path",
+    "gmail_query",
+]
+
 
 class ConfigError(ValueError):
     """Raised when worker configuration is missing or invalid."""
@@ -119,6 +125,23 @@ def validate_config(data: dict[str, Any], path: Path) -> None:
     for field in E2E_STRING_FIELDS:
         if field in data and (not isinstance(data[field], str) or not data[field].strip()):
             raise ConfigError(f"Config field {field} must be a non-empty string")
+
+    if "gmail_enabled" in data and not isinstance(data["gmail_enabled"], bool):
+        raise ConfigError("Config field gmail_enabled must be true or false")
+
+    for field in GMAIL_STRING_FIELDS:
+        if field in data and (not isinstance(data[field], str) or not data[field].strip()):
+            raise ConfigError(f"Config field {field} must be a non-empty string")
+
+    if "gmail_labels" in data and (
+        not isinstance(data["gmail_labels"], list) or not all(isinstance(item, str) for item in data["gmail_labels"])
+    ):
+        raise ConfigError("Config field gmail_labels must be a list of strings")
+
+    if "gmail_max_results" in data:
+        max_results = data["gmail_max_results"]
+        if not isinstance(max_results, int) or max_results <= 0:
+            raise ConfigError("Config field gmail_max_results must be a positive integer")
 
 
 def load_config(cli_config: str | None = None, repo_root: Path | None = None) -> WorkerConfig:

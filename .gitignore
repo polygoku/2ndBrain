@@ -23,6 +23,10 @@ rclone.conf
 *.tokens
 *.credentials
 *.secret
+gmail_credentials.json
+gmail_token.json
+*credentials*.json
+*token*.json
 
 # Editor
 .vscode/

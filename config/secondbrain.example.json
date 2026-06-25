@@ -45,5 +45,15 @@
   "e2e_test_output_prefix": "_test",
   "fixture_gmail_path": "tests/fixtures/gmail_sample.json",
   "fixture_calendar_path": "tests/fixtures/calendar_sample.json",
-  "fixture_vault_inbox_path": "tests/fixtures/vault_inbox_sample.md"
+  "fixture_vault_inbox_path": "tests/fixtures/vault_inbox_sample.md",
+  "gmail_enabled": false,
+  "gmail_credentials_path": "/opt/secondbrain/secrets/gmail_credentials.json",
+  "gmail_token_path": "/opt/secondbrain/secrets/gmail_token.json",
+  "gmail_labels": [
+    "INBOX",
+    "Action",
+    "Waiting"
+  ],
+  "gmail_max_results": 10,
+  "gmail_query": "newer_than:14d"
 }
