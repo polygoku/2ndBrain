@@ -10,6 +10,7 @@ from typing import Any
 from worker.config import ConfigError, load_config
 from worker.openclaw_client import run_openclaw
 from worker.prompt_builder import build_daily_prompt
+from worker.sources.calendar_readonly import CalendarReadonlyError, load_calendar_items
 from worker.sources.fixture_sources import load_fixture_items
 from worker.sources.gmail_readonly import GmailReadonlyError, load_gmail_items
 from worker.sources.mock_sources import load_mock_items
@@ -27,6 +28,8 @@ def load_source_items(config: dict[str, Any], use_mock: bool, use_fixture: bool 
     items = load_vault_inbox_items(config["vps_vault_path"])
     if config.get("gmail_enabled", False):
         items.extend(load_gmail_items(config))
+    if config.get("calendar_enabled", False):
+        items.extend(load_calendar_items(config))
     return items
 
 
@@ -64,7 +67,7 @@ def run(
 
     try:
         items = load_source_items(config, use_mock=use_mock_sources, use_fixture=use_fixture_sources)
-    except GmailReadonlyError as exc:
+    except (GmailReadonlyError, CalendarReadonlyError) as exc:
         print(f"FAIL: {exc}")
         return 1
     registry = ProcessedRegistry(Path(config["processed_registry_path"]))

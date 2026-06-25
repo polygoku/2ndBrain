@@ -55,5 +55,14 @@
     "Waiting"
   ],
   "gmail_max_results": 10,
-  "gmail_query": "newer_than:14d"
+  "gmail_query": "newer_than:14d",
+  "calendar_enabled": false,
+  "calendar_credentials_path": "/opt/secondbrain/secrets/calendar_credentials.json",
+  "calendar_token_path": "/opt/secondbrain/secrets/calendar_token.json",
+  "calendar_ids": [
+    "primary"
+  ],
+  "calendar_days_ahead": 1,
+  "calendar_max_results": 20,
+  "calendar_timezone": "America/New_York"
 }
