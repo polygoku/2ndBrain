@@ -102,6 +102,39 @@ scripts/vps_live_readonly_dry_run.sh --config=config/secondbrain.local.json --sk
 
 Live-readonly test mode already uses deterministic output by default. The flag is accepted to make that safety intent explicit in operator commands.
 
+## Real OpenClaw `_test` Run
+
+By default, live-readonly test mode uses deterministic mock OpenClaw output. To test the configured OpenClaw command, you must explicitly pass `--real-openclaw`.
+
+Recommended first command:
+
+```bash
+scripts/vps_live_readonly_dry_run.sh --config=config/secondbrain.local.json --no-pull --real-openclaw
+```
+
+This uses the already-local vault mirror plus read-only Gmail and Calendar sources enabled in local config. It does not pull the vault first.
+
+The worker command is:
+
+```bash
+python -m worker.run_daily --config config/secondbrain.local.json --live-readonly-test --real-openclaw
+```
+
+Safety gates still apply:
+
+- `live_readonly_test_mode=true` is required
+- `live_readonly_output_prefix="_test"` is required
+- Gmail or Calendar must be enabled
+- output stays `_test` only
+- production automation log is not written
+- processed registry is not updated
+- generated staging outside `_test` is not created
+- Gmail and Calendar writes are not performed
+
+OpenClaw output is validated by the existing markdown validator. If OpenClaw returns empty output, shell-like output, or forbidden action claims, the worker fails closed before writing any generated markdown.
+
+Inspect output in Obsidian under the `_test` folders listed below. Treat `_test` output as disposable review material.
+
 ## Output Locations
 
 Generated markdown may only be written under:
@@ -159,4 +192,4 @@ Common `_test` folders:
 
 ## Next Phase
 
-The next phase is a real OpenClaw `_test` dry run. That should require an explicit flag, keep `_test` output-only writes, and still avoid any Gmail, Calendar, Drive, or rclone mutations.
+The next phase is production daily brief output enablement. That should be a separate PR with explicit approval, narrow generated-output paths, and unchanged Gmail, Calendar, Drive, and rclone safety boundaries.

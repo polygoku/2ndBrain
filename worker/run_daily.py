@@ -41,6 +41,7 @@ def run(
     fixture: bool = False,
     test_output: bool = False,
     live_readonly_test: bool = False,
+    real_openclaw: bool = False,
 ) -> int:
     try:
         loaded = load_config(config_path)
@@ -64,6 +65,9 @@ def run(
 
     if test_output and not fixture:
         print("FAIL: --test-output can only be used with --fixture")
+        return 2
+    if real_openclaw and not live_readonly_test:
+        print("FAIL: --real-openclaw requires --live-readonly-test")
         return 2
     if fixture and not bool(config.get("e2e_test_mode", False)):
         print("FAIL: --fixture requires e2e_test_mode=true")
@@ -112,7 +116,7 @@ def run(
     client_result = run_openclaw(
         prompt,
         config,
-        dry_run=effective_dry_run or live_readonly_test,
+        dry_run=effective_dry_run or (live_readonly_test and not real_openclaw),
         mock=mock,
         fixture=fixture,
     )
@@ -183,6 +187,7 @@ def main() -> None:
     mode.add_argument("--fixture", action="store_true", help="Use local fixture sources and fixture OpenClaw output")
     mode.add_argument("--live-readonly-test", action="store_true", help="Use configured read-only sources and write only _test outputs")
     parser.add_argument("--test-output", action="store_true", help="With --fixture, write only safe _test generated outputs")
+    parser.add_argument("--real-openclaw", action="store_true", help="With --live-readonly-test, call the configured OpenClaw command")
     args = parser.parse_args()
 
     dry_run = True if args.dry_run else None
@@ -195,6 +200,7 @@ def main() -> None:
             fixture=args.fixture,
             test_output=args.test_output,
             live_readonly_test=args.live_readonly_test,
+            real_openclaw=args.real_openclaw,
         )
     )
 

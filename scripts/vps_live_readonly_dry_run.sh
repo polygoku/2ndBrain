@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 CONFIG_FILE="config/secondbrain.local.json"
 NO_PULL=false
 SKIP_OPENCLAW=false
+REAL_OPENCLAW=false
 
 for arg in "$@"; do
   case "$arg" in
@@ -18,6 +19,9 @@ for arg in "$@"; do
     --skip-openclaw)
       SKIP_OPENCLAW=true
       ;;
+    --real-openclaw)
+      REAL_OPENCLAW=true
+      ;;
     *)
       printf 'FAIL: Unknown argument: %s\n' "$arg"
       exit 1
@@ -29,6 +33,10 @@ cd "$REPO_ROOT"
 
 fail() { printf 'FAIL: %s\n' "$1"; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
+
+if [[ "$SKIP_OPENCLAW" == true && "$REAL_OPENCLAW" == true ]]; then
+  fail "--skip-openclaw and --real-openclaw cannot be used together"
+fi
 
 [[ -f "$CONFIG_FILE" ]] || fail "Config file missing: $CONFIG_FILE"
 
@@ -96,10 +104,22 @@ fi
 
 if [[ "$SKIP_OPENCLAW" == true ]]; then
   pass "Using deterministic worker output because --skip-openclaw was supplied"
+elif [[ "$REAL_OPENCLAW" == true ]]; then
+  cat <<'TEXT'
+WARN: Real OpenClaw will receive read-only Gmail/Calendar/vault source text.
+WARN: Worker output remains limited to _test paths.
+WARN: Gmail and Calendar writes are not performed.
+WARN: Production vault output paths, automation log, registry, and staging are not written.
+TEXT
 else
   pass "Using deterministic worker output; live OpenClaw is not called by this script"
 fi
 
-python -m worker.run_daily --config "$CONFIG_FILE" --live-readonly-test
+WORKER_ARGS=(--config "$CONFIG_FILE" --live-readonly-test)
+if [[ "$REAL_OPENCLAW" == true ]]; then
+  WORKER_ARGS+=(--real-openclaw)
+fi
+
+python -m worker.run_daily "${WORKER_ARGS[@]}"
 
 pass "Live read-only dry run completed with _test-only worker output"
