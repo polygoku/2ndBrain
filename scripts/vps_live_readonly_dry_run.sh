@@ -34,6 +34,10 @@ cd "$REPO_ROOT"
 fail() { printf 'FAIL: %s\n' "$1"; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
+if [[ "$SKIP_OPENCLAW" == true && "$REAL_OPENCLAW" == true ]]; then
+  fail "--skip-openclaw and --real-openclaw cannot be used together"
+fi
+
 [[ -f "$CONFIG_FILE" ]] || fail "Config file missing: $CONFIG_FILE"
 
 python - "$CONFIG_FILE" <<'PY'

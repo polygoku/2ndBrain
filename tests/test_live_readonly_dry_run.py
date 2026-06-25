@@ -266,6 +266,32 @@ def test_live_readonly_script_refuses_unsafe_config_before_pull(tmp_path):
     assert "live_readonly_test_mode must be true" in completed.stdout or completed.stderr
 
 
+def test_live_readonly_script_refuses_skip_and_real_openclaw_before_config_or_actions(tmp_path):
+    if shutil.which("bash") is None:
+        pytest.skip("bash is not available for shell-level script validation")
+
+    completed = subprocess.run(
+        [
+            "bash",
+            "scripts/vps_live_readonly_dry_run.sh",
+            "--config=.pytest_cache/does-not-exist-live-readonly.json",
+            "--no-pull",
+            "--skip-openclaw",
+            "--real-openclaw",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode != 0
+    assert "--skip-openclaw and --real-openclaw cannot be used together" in completed.stdout
+    assert "Config file missing" not in completed.stdout
+    assert "rclone" not in completed.stdout.lower()
+    assert "OpenClaw will receive" not in completed.stdout
+
+
 def test_live_readonly_example_config_is_safe_and_placeholder_only():
     config = json.loads((ROOT / "config" / "secondbrain.live-readonly.example.json").read_text(encoding="utf-8"))
     serialized = json.dumps(config).lower()
