@@ -38,6 +38,12 @@ GMAIL_STRING_FIELDS = [
     "gmail_query",
 ]
 
+CALENDAR_STRING_FIELDS = [
+    "calendar_credentials_path",
+    "calendar_token_path",
+    "calendar_timezone",
+]
+
 
 class ConfigError(ValueError):
     """Raised when worker configuration is missing or invalid."""
@@ -142,6 +148,27 @@ def validate_config(data: dict[str, Any], path: Path) -> None:
         max_results = data["gmail_max_results"]
         if not isinstance(max_results, int) or max_results <= 0:
             raise ConfigError("Config field gmail_max_results must be a positive integer")
+
+    if "calendar_enabled" in data and not isinstance(data["calendar_enabled"], bool):
+        raise ConfigError("Config field calendar_enabled must be true or false")
+
+    for field in CALENDAR_STRING_FIELDS:
+        if field in data and (not isinstance(data[field], str) or not data[field].strip()):
+            raise ConfigError(f"Config field {field} must be a non-empty string")
+
+    if "calendar_ids" in data and (
+        not isinstance(data["calendar_ids"], list) or not all(isinstance(item, str) for item in data["calendar_ids"])
+    ):
+        raise ConfigError("Config field calendar_ids must be a list of strings")
+
+    for field in ("calendar_days_ahead", "calendar_max_results"):
+        if field in data:
+            value = data[field]
+            if not isinstance(value, int) or value < 0:
+                raise ConfigError(f"Config field {field} must be a non-negative integer")
+
+    if "calendar_max_results" in data and data["calendar_max_results"] <= 0:
+        raise ConfigError("Config field calendar_max_results must be greater than zero")
 
 
 def load_config(cli_config: str | None = None, repo_root: Path | None = None) -> WorkerConfig:
