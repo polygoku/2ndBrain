@@ -180,6 +180,16 @@ scripts/vps_production_daily_brief.sh --config=config/secondbrain.local.json --n
 
 The worker still does not modify Gmail, Calendar, Google Drive directly, or use destructive rclone behavior. See `docs/PRODUCTION_DAILY_BRIEF_OUTPUT.md`.
 
+## Scheduled execution
+
+Disabled-by-default systemd timer templates and install/status scripts are available for VPS scheduling after manual production runs have been validated.
+
+```bash
+scripts/vps_install_timer.sh --dry-run --repo=/opt/secondbrain --config=/opt/secondbrain/config/secondbrain.local.json
+```
+
+The installer does not enable the timer unless `--enable` is explicit and never runs the production daily brief during install. See `docs/SCHEDULED_EXECUTION.md`.
+
 ## Next automation ideas for Codex
 
 See:

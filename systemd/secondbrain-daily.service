@@ -1,0 +1,16 @@
+[Unit]
+Description=Second Brain Production Daily Brief
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=worker
+WorkingDirectory=/opt/secondbrain
+Environment=RCLONE_CONFIG=/opt/secondbrain/secrets/rclone.conf
+ExecStart=/opt/secondbrain/scripts/vps_production_daily_brief.sh --config=/opt/secondbrain/config/secondbrain.local.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/secondbrain/logs /opt/secondbrain/state /opt/secondbrain/tmp /opt/secondbrain/generated /opt/secondbrain/vault
