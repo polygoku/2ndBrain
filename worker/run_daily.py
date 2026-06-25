@@ -17,7 +17,7 @@ from worker.sources.mock_sources import load_mock_items
 from worker.sources.vault_inbox import load_vault_inbox_items
 from worker.state import ProcessedRegistry
 from worker.validators import validate_markdown
-from worker.writer import GeneratedWriter, WriteSafetyError
+from worker.writer import GeneratedWriter, WriteSafetyError, normalize_relative_path
 
 
 def load_source_items(config: dict[str, Any], use_mock: bool, use_fixture: bool = False) -> list[dict[str, Any]]:
@@ -33,6 +33,24 @@ def load_source_items(config: dict[str, Any], use_mock: bool, use_fixture: bool 
     return items
 
 
+def validate_production_output_config(config: dict[str, Any]) -> None:
+    if not bool(config.get("production_output_enabled", False)):
+        raise ConfigError("--production-output requires production_output_enabled=true")
+    if bool(config.get("dry_run", False)):
+        raise ConfigError("--production-output requires dry_run=false")
+    if bool(config.get("live_readonly_test_mode", False)):
+        raise ConfigError("--production-output refuses live_readonly_test_mode=true")
+    if bool(config.get("e2e_test_mode", False)):
+        raise ConfigError("--production-output refuses e2e_test_mode=true")
+    for field in ("live_readonly_output_prefix", "e2e_test_output_prefix"):
+        if field in config and str(config[field]).strip():
+            if str(config[field]).strip() == "_test":
+                continue
+            raise ConfigError(f"--production-output refuses unsafe {field}")
+    for path in config["allowed_write_paths"]:
+        normalize_relative_path(path)
+
+
 def run(
     config_path: str | None = None,
     dry_run: bool | None = None,
@@ -42,6 +60,7 @@ def run(
     test_output: bool = False,
     live_readonly_test: bool = False,
     real_openclaw: bool = False,
+    production_output: bool = False,
 ) -> int:
     try:
         loaded = load_config(config_path)
@@ -58,6 +77,8 @@ def run(
     if fixture:
         effective_dry_run = not test_output
     if live_readonly_test:
+        effective_dry_run = False
+    if production_output:
         effective_dry_run = False
     use_mock_sources = mock
     use_fixture_sources = fixture
@@ -81,6 +102,12 @@ def run(
             return 2
         if str(config.get("live_readonly_output_prefix", "_test")).strip() != "_test":
             print("FAIL: --live-readonly-test requires live_readonly_output_prefix=\"_test\"")
+            return 2
+    if production_output:
+        try:
+            validate_production_output_config(config)
+        except ConfigError as exc:
+            print(f"FAIL: {exc}")
             return 2
 
     try:
@@ -186,6 +213,7 @@ def main() -> None:
     mode.add_argument("--real", action="store_true", help="Use real configured sources and OpenClaw command")
     mode.add_argument("--fixture", action="store_true", help="Use local fixture sources and fixture OpenClaw output")
     mode.add_argument("--live-readonly-test", action="store_true", help="Use configured read-only sources and write only _test outputs")
+    mode.add_argument("--production-output", action="store_true", help="Use real sources and OpenClaw, then write whitelisted production outputs")
     parser.add_argument("--test-output", action="store_true", help="With --fixture, write only safe _test generated outputs")
     parser.add_argument("--real-openclaw", action="store_true", help="With --live-readonly-test, call the configured OpenClaw command")
     args = parser.parse_args()
@@ -201,6 +229,7 @@ def main() -> None:
             test_output=args.test_output,
             live_readonly_test=args.live_readonly_test,
             real_openclaw=args.real_openclaw,
+            production_output=args.production_output,
         )
     )
 
