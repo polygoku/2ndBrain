@@ -8,8 +8,8 @@ This flow lets Codex analyze raw `.md` handoff files directly without adding Ope
 
 1. The worker reads configured Gmail, Calendar, and vault sources using the existing safe source loaders.
 2. The worker builds the same daily-brief raw prompt used for analysis.
-3. The worker exports the raw prompt to `/opt/secondbrain/inbox-for-codex/_test/`.
-4. Codex reads that raw file and writes generated markdown to `/opt/secondbrain/outbox-from-codex/_test/`.
+3. The worker exports the raw prompt to `/opt/secondbrain-codex/inbox-for-codex/_test/`.
+4. Codex reads that raw file and writes generated markdown to `/opt/secondbrain-codex/outbox-from-codex/_test/`.
 5. The worker imports the specified outbox markdown file.
 6. The worker validates markdown before any vault write.
 7. The worker writes only approved `_test` output into the vault by default.
@@ -17,11 +17,11 @@ This flow lets Codex analyze raw `.md` handoff files directly without adding Ope
 ## Paths
 
 ```text
-/opt/secondbrain/inbox-for-codex/_test/raw-daily-brief-YYYY-MM-DD.md
-/opt/secondbrain/inbox-for-codex/_test/raw-daily-brief-YYYY-MM-DD.manifest.json
+/opt/secondbrain-codex/inbox-for-codex/_test/raw-daily-brief-YYYY-MM-DD.md
+/opt/secondbrain-codex/inbox-for-codex/_test/raw-daily-brief-YYYY-MM-DD.manifest.json
 
-/opt/secondbrain/outbox-from-codex/_test/daily-brief-YYYY-MM-DD.md
-/opt/secondbrain/outbox-from-codex/_test/daily-brief-YYYY-MM-DD.manifest.json
+/opt/secondbrain-codex/outbox-from-codex/_test/daily-brief-YYYY-MM-DD.md
+/opt/secondbrain-codex/outbox-from-codex/_test/daily-brief-YYYY-MM-DD.manifest.json
 ```
 
 Raw prompt files may contain private Gmail, Calendar, and vault text. Do not commit them. Do not paste them into public tools.
@@ -34,8 +34,8 @@ Folder handoff is disabled by default:
 {
   "codex_handoff_enabled": false,
   "codex_handoff_allow_repo_paths": false,
-  "codex_handoff_inbox_path": "/opt/secondbrain/inbox-for-codex",
-  "codex_handoff_outbox_path": "/opt/secondbrain/outbox-from-codex",
+  "codex_handoff_inbox_path": "/opt/secondbrain-codex/inbox-for-codex",
+  "codex_handoff_outbox_path": "/opt/secondbrain-codex/outbox-from-codex",
   "codex_handoff_output_prefix": "_test"
 }
 ```
@@ -49,7 +49,7 @@ On the VPS, enable only after reviewing safety:
 }
 ```
 
-The inbox and outbox paths are refused if they are inside the git repo worktree unless `codex_handoff_allow_repo_paths=true` is explicitly set. VPS deployment should keep the handoff folders at `/opt/secondbrain/inbox-for-codex` and `/opt/secondbrain/outbox-from-codex`.
+The inbox and outbox paths are refused if they are inside the git repo worktree unless `codex_handoff_allow_repo_paths=true` is explicitly set. VPS deployment should keep the repo at `/opt/secondbrain` and the handoff folders outside the repo at `/opt/secondbrain-codex/inbox-for-codex` and `/opt/secondbrain-codex/outbox-from-codex`.
 
 ## Commands
 
@@ -62,7 +62,7 @@ scripts/vps_codex_handoff.sh --config=/opt/secondbrain/config/secondbrain.local.
 Import generated markdown:
 
 ```bash
-scripts/vps_codex_handoff.sh --config=/opt/secondbrain/config/secondbrain.local.json --import=/opt/secondbrain/outbox-from-codex/_test/daily-brief-YYYY-MM-DD.md
+scripts/vps_codex_handoff.sh --config=/opt/secondbrain/config/secondbrain.local.json --import=/opt/secondbrain-codex/outbox-from-codex/_test/daily-brief-YYYY-MM-DD.md
 ```
 
 Import filenames must match `daily-brief-YYYY-MM-DD.md`. Malformed names and invalid dates are refused.

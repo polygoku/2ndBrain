@@ -45,8 +45,8 @@ p = Path("/opt/secondbrain/config/secondbrain.local.json")
 data = json.loads(p.read_text(encoding="utf-8"))
 data["codex_handoff_enabled"] = True
 data["codex_handoff_allow_repo_paths"] = False
-data["codex_handoff_inbox_path"] = "/opt/secondbrain/inbox-for-codex"
-data["codex_handoff_outbox_path"] = "/opt/secondbrain/outbox-from-codex"
+data["codex_handoff_inbox_path"] = "/opt/secondbrain-codex/inbox-for-codex"
+data["codex_handoff_outbox_path"] = "/opt/secondbrain-codex/outbox-from-codex"
 data["codex_handoff_output_prefix"] = "_test"
 p.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 for key in [
@@ -73,7 +73,7 @@ production_output_enabled: False
 ## 4. Create Handoff Folders
 
 ```bash
-mkdir -p /opt/secondbrain/inbox-for-codex/_test /opt/secondbrain/outbox-from-codex/_test
+mkdir -p /opt/secondbrain-codex/inbox-for-codex/_test /opt/secondbrain-codex/outbox-from-codex/_test
 ```
 
 ## 5. Export Raw Prompt Only
@@ -90,7 +90,7 @@ python3 - <<'PY'
 import json
 from pathlib import Path
 
-folder = Path("/opt/secondbrain/inbox-for-codex/_test")
+folder = Path("/opt/secondbrain-codex/inbox-for-codex/_test")
 manifests = sorted(folder.glob("raw-daily-brief-*.manifest.json"))
 if not manifests:
     raise SystemExit("FAIL: no export manifest found")
@@ -106,7 +106,7 @@ Set `RUN_DATE` to the exported date. Do not copy raw source text into this file.
 
 ```bash
 RUN_DATE="$(date +%F)"
-cat > "/opt/secondbrain/outbox-from-codex/_test/daily-brief-${RUN_DATE}.md" <<EOF
+cat > "/opt/secondbrain-codex/outbox-from-codex/_test/daily-brief-${RUN_DATE}.md" <<EOF
 # Daily Briefing - ${RUN_DATE}
 
 ## Calendar Summary
@@ -122,7 +122,7 @@ EOF
 ## 7. Import Test Output Only
 
 ```bash
-scripts/vps_codex_handoff.sh --config=/opt/secondbrain/config/secondbrain.local.json --import="/opt/secondbrain/outbox-from-codex/_test/daily-brief-${RUN_DATE}.md"
+scripts/vps_codex_handoff.sh --config=/opt/secondbrain/config/secondbrain.local.json --import="/opt/secondbrain-codex/outbox-from-codex/_test/daily-brief-${RUN_DATE}.md"
 ```
 
 ## 8. Verify Test Output Path

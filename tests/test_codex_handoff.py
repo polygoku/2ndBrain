@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from worker.run_daily import run
+from worker.run_daily import _require_codex_handoff_config, run
 from worker.state import item_hash
 
 
@@ -498,6 +498,18 @@ def test_handoff_refuses_in_repo_paths_by_default(tmp_path, capsys):
 
     assert result == 2
     assert "must not be inside the git repo" in capsys.readouterr().out
+
+
+def test_documented_vps_handoff_paths_are_outside_repo_and_allowed(tmp_path):
+    _, config = make_config(
+        tmp_path,
+        vps_repo_path="/opt/secondbrain",
+        codex_handoff_allow_repo_paths=False,
+        codex_handoff_inbox_path="/opt/secondbrain-codex/inbox-for-codex",
+        codex_handoff_outbox_path="/opt/secondbrain-codex/outbox-from-codex",
+    )
+
+    _require_codex_handoff_config(config)
 
 
 def test_handoff_allows_in_repo_paths_only_when_explicitly_configured(tmp_path, monkeypatch):

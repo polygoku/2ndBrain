@@ -1,6 +1,6 @@
 # Codex Handoff Instructions
 
-Watch or inspect `/opt/secondbrain/inbox-for-codex/_test` for new files named like:
+Watch or inspect `/opt/secondbrain-codex/inbox-for-codex/_test` for new files named like:
 
 ```text
 raw-daily-brief-YYYY-MM-DD.md
@@ -10,7 +10,7 @@ For each raw file:
 
 1. Read the raw file.
 2. Generate an Obsidian-ready daily brief.
-3. Write the result to `/opt/secondbrain/outbox-from-codex/_test/daily-brief-YYYY-MM-DD.md`.
+3. Write the result to `/opt/secondbrain-codex/outbox-from-codex/_test/daily-brief-YYYY-MM-DD.md`.
 4. Do not delete, move, or overwrite source files.
 5. Do not access Gmail, Calendar, Google Drive, rclone, secrets, or tokens.
 6. Do not write directly to the vault.
