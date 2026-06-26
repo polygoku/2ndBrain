@@ -198,7 +198,7 @@ Start with `docs/VPS_FIRST_RUN_CHECKLIST.md`, then use `docs/FINAL_OPERATIONS_RU
 
 ## Codex folder handoff
 
-When OpenClaw CLI automation is unavailable, the worker can export raw daily-brief prompt files to a local Codex inbox and import validated generated markdown from a local Codex outbox. See `docs/CODEX_FOLDER_HANDOFF.md` and `docs/CODEX_HANDOFF_INSTRUCTIONS.md`.
+When OpenClaw CLI automation is unavailable, the worker can export raw daily-brief prompt files to a local Codex inbox and import validated generated markdown from a local Codex outbox. See `docs/CODEX_FOLDER_HANDOFF.md`, `docs/CODEX_HANDOFF_INSTRUCTIONS.md`, and `docs/VPS_CODEX_HANDOFF_DEPLOYMENT.md`.
 
 ## Next automation ideas for Codex
 

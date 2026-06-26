@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def make_config(tmp_path: Path, **overrides):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     data = {
         "agent_provider": "openclaw",
         "openclaw_command": "missing-openclaw --input {prompt_file}",
@@ -65,6 +66,7 @@ def make_config(tmp_path: Path, **overrides):
         "calendar_max_results": 20,
         "calendar_timezone": "America/New_York",
         "codex_handoff_enabled": True,
+        "codex_handoff_allow_repo_paths": False,
         "codex_handoff_inbox_path": str(tmp_path / "inbox-for-codex"),
         "codex_handoff_outbox_path": str(tmp_path / "outbox-from-codex"),
         "codex_handoff_output_prefix": "_test",
@@ -123,6 +125,20 @@ def markdown_files(root: Path) -> list[Path]:
     if not root.exists():
         return []
     return [path for path in root.rglob("*.md") if path.is_file()]
+
+
+def make_openclaw_helper(tmp_path: Path) -> Path:
+    helper = tmp_path / "fake_openclaw.py"
+    helper.write_text(
+        """print("# Daily Briefing - 2026-06-25")
+print()
+print("## Calendar Summary")
+print()
+print("- CLI production dispatch test.")
+""",
+        encoding="utf-8",
+    )
+    return helper
 
 
 def test_export_refuses_when_codex_handoff_disabled(tmp_path, capsys):
@@ -262,6 +278,54 @@ def test_import_valid_markdown_writes_only_test_vault_output(tmp_path, monkeypat
     assert manifest["vault_output_path"] == str(written[0])
 
 
+def test_import_valid_filename_sets_output_date(tmp_path):
+    config_path, config = make_config(tmp_path)
+    response = Path(config["codex_handoff_outbox_path"]) / "_test" / "daily-brief-2026-01-31.md"
+    response.parent.mkdir(parents=True)
+    response.write_text(valid_daily_brief(), encoding="utf-8")
+
+    result = run(config_path=str(config_path), import_codex_handoff_file=str(response))
+
+    assert result == 0
+    assert (Path(config["vps_vault_path"]) / "00-System" / "Daily Briefings" / "_test" / "2026-01-31.md").exists()
+
+
+def test_import_refuses_missing_date_filename(tmp_path, capsys):
+    config_path, config = make_config(tmp_path)
+    response = Path(config["codex_handoff_outbox_path"]) / "_test" / "daily-brief.md"
+    response.parent.mkdir(parents=True)
+    response.write_text(valid_daily_brief(), encoding="utf-8")
+
+    result = run(config_path=str(config_path), import_codex_handoff_file=str(response))
+
+    assert result == 2
+    assert "daily-brief-YYYY-MM-DD.md" in capsys.readouterr().out
+
+
+def test_import_refuses_invalid_date_filename(tmp_path, capsys):
+    config_path, config = make_config(tmp_path)
+    response = Path(config["codex_handoff_outbox_path"]) / "_test" / "daily-brief-2026-99-99.md"
+    response.parent.mkdir(parents=True)
+    response.write_text(valid_daily_brief(), encoding="utf-8")
+
+    result = run(config_path=str(config_path), import_codex_handoff_file=str(response))
+
+    assert result == 2
+    assert "invalid YYYY-MM-DD date" in capsys.readouterr().out
+
+
+def test_import_refuses_wrong_prefix_filename(tmp_path, capsys):
+    config_path, config = make_config(tmp_path)
+    response = Path(config["codex_handoff_outbox_path"]) / "_test" / "weekly-brief-2026-06-25.md"
+    response.parent.mkdir(parents=True)
+    response.write_text(valid_daily_brief(), encoding="utf-8")
+
+    result = run(config_path=str(config_path), import_codex_handoff_file=str(response))
+
+    assert result == 2
+    assert "daily-brief-YYYY-MM-DD.md" in capsys.readouterr().out
+
+
 def test_production_import_refuses_without_production_gates(tmp_path, capsys):
     config_path, config = make_config(tmp_path)
     response = Path(config["codex_handoff_outbox_path"]) / "_test" / "daily-brief-2026-06-25.md"
@@ -277,6 +341,39 @@ def test_production_import_refuses_without_production_gates(tmp_path, capsys):
     assert result == 2
     assert "production_output_enabled=true" in capsys.readouterr().out
     assert markdown_files(Path(config["vps_vault_path"])) == []
+
+
+def test_import_production_output_still_requires_all_production_gates(tmp_path, capsys):
+    response = tmp_path / "outbox-from-codex" / "_test" / "daily-brief-2026-06-25.md"
+    response.parent.mkdir(parents=True)
+    response.write_text(valid_daily_brief(), encoding="utf-8")
+
+    for field, value, expected in [
+        ("production_output_enabled", False, "production_output_enabled=true"),
+        ("dry_run", True, "dry_run=false"),
+        ("live_readonly_test_mode", True, "live_readonly_test_mode=true"),
+        ("e2e_test_mode", True, "e2e_test_mode=true"),
+    ]:
+        overrides = {
+            "production_output_enabled": True,
+            "dry_run": False,
+            "live_readonly_test_mode": False,
+            "e2e_test_mode": False,
+        }
+        overrides[field] = value
+        config_path, config = make_config(tmp_path / field, **overrides)
+        actual_response = Path(config["codex_handoff_outbox_path"]) / "_test" / "daily-brief-2026-06-25.md"
+        actual_response.parent.mkdir(parents=True)
+        actual_response.write_text(valid_daily_brief(), encoding="utf-8")
+
+        result = run(
+            config_path=str(config_path),
+            import_codex_handoff_file=str(actual_response),
+            production_output=True,
+        )
+
+        assert result == 2
+        assert expected in capsys.readouterr().out
 
 
 def test_production_import_writes_only_whitelisted_production_daily_brief(tmp_path):
@@ -303,6 +400,121 @@ def test_production_import_writes_only_whitelisted_production_daily_brief(tmp_pa
     assert "_test" not in markdown_files(vault)[0].relative_to(vault).parts
     assert not (vault / "00-System" / "Automation Log.md").exists()
     assert not Path(config["processed_registry_path"]).exists()
+
+
+def test_standalone_production_output_cli_still_dispatches(tmp_path):
+    helper = make_openclaw_helper(tmp_path)
+    vault = tmp_path / "vault"
+    inbox = vault / "01-Inbox" / "Inbox.md"
+    inbox.parent.mkdir(parents=True)
+    inbox.write_text("# Inbox\n\n## 2026-06-25 09:00\n\nProduction CLI source\n", encoding="utf-8")
+    config_path, config = make_config(
+        tmp_path,
+        openclaw_command=f"{Path(sys.executable).as_posix()} {helper.as_posix()}",
+        production_output_enabled=True,
+        dry_run=False,
+        live_readonly_test_mode=False,
+        e2e_test_mode=False,
+        gmail_enabled=False,
+        calendar_enabled=False,
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "worker.run_daily", "--config", str(config_path), "--production-output"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "OpenClaw called or mocked: called" in completed.stdout
+    assert "wrote:" in completed.stdout
+    assert (Path(config["vps_vault_path"]) / "00-System" / "Daily Briefings").exists()
+    assert Path(config["processed_registry_path"]).exists()
+
+
+def test_production_output_cli_rejects_invalid_mode_combinations(tmp_path):
+    config_path, _ = make_config(
+        tmp_path,
+        production_output_enabled=True,
+        dry_run=False,
+        live_readonly_test_mode=False,
+        e2e_test_mode=False,
+        gmail_enabled=False,
+        calendar_enabled=False,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "worker.run_daily",
+            "--config",
+            str(config_path),
+            "--mock",
+            "--production-output",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert "--production-output must be used by itself or with --import-codex-handoff" in completed.stdout
+
+
+def test_export_rejects_production_output_combination(tmp_path, capsys):
+    config_path, _ = make_config(tmp_path)
+
+    result = run(config_path=str(config_path), export_codex_handoff_mode=True, production_output=True)
+
+    assert result == 2
+    assert "--production-output cannot be used with --export-codex-handoff" in capsys.readouterr().out
+
+
+def test_handoff_rejects_unrelated_mode_flags(tmp_path, capsys):
+    config_path, config = make_config(tmp_path)
+    response = Path(config["codex_handoff_outbox_path"]) / "_test" / "daily-brief-2026-06-25.md"
+    response.parent.mkdir(parents=True)
+    response.write_text(valid_daily_brief(), encoding="utf-8")
+
+    result = run(config_path=str(config_path), import_codex_handoff_file=str(response), real_openclaw=True)
+
+    assert result == 2
+    assert "cannot be combined with --test-output or --real-openclaw" in capsys.readouterr().out
+
+
+def test_handoff_refuses_in_repo_paths_by_default(tmp_path, capsys):
+    config_path, _ = make_config(
+        tmp_path,
+        vps_repo_path=str(tmp_path),
+        codex_handoff_inbox_path=str(tmp_path / "inbox-for-codex"),
+        codex_handoff_outbox_path=str(tmp_path / "outbox-from-codex"),
+    )
+
+    result = run(config_path=str(config_path), export_codex_handoff_mode=True)
+
+    assert result == 2
+    assert "must not be inside the git repo" in capsys.readouterr().out
+
+
+def test_handoff_allows_in_repo_paths_only_when_explicitly_configured(tmp_path, monkeypatch):
+    config_path, config = make_config(
+        tmp_path,
+        vps_repo_path=str(tmp_path),
+        codex_handoff_allow_repo_paths=True,
+        codex_handoff_inbox_path=str(tmp_path / "inbox-for-codex"),
+        codex_handoff_outbox_path=str(tmp_path / "outbox-from-codex"),
+    )
+    stub_sources(monkeypatch)
+    forbid_openclaw(monkeypatch)
+
+    result = run(config_path=str(config_path), export_codex_handoff_mode=True)
+
+    assert result == 0
+    assert list((Path(config["codex_handoff_inbox_path"]) / "_test").glob("raw-daily-brief-*.md"))
 
 
 def test_codex_handoff_script_has_safe_defaults():

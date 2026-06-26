@@ -33,6 +33,7 @@ Folder handoff is disabled by default:
 ```json
 {
   "codex_handoff_enabled": false,
+  "codex_handoff_allow_repo_paths": false,
   "codex_handoff_inbox_path": "/opt/secondbrain/inbox-for-codex",
   "codex_handoff_outbox_path": "/opt/secondbrain/outbox-from-codex",
   "codex_handoff_output_prefix": "_test"
@@ -48,6 +49,8 @@ On the VPS, enable only after reviewing safety:
 }
 ```
 
+The inbox and outbox paths are refused if they are inside the git repo worktree unless `codex_handoff_allow_repo_paths=true` is explicitly set. VPS deployment should keep the handoff folders at `/opt/secondbrain/inbox-for-codex` and `/opt/secondbrain/outbox-from-codex`.
+
 ## Commands
 
 Export a raw prompt:
@@ -61,6 +64,8 @@ Import generated markdown:
 ```bash
 scripts/vps_codex_handoff.sh --config=/opt/secondbrain/config/secondbrain.local.json --import=/opt/secondbrain/outbox-from-codex/_test/daily-brief-YYYY-MM-DD.md
 ```
+
+Import filenames must match `daily-brief-YYYY-MM-DD.md`. Malformed names and invalid dates are refused.
 
 ## Safety Boundaries
 

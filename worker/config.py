@@ -147,6 +147,9 @@ def validate_config(data: dict[str, Any], path: Path) -> None:
     if "codex_handoff_enabled" in data and not isinstance(data["codex_handoff_enabled"], bool):
         raise ConfigError("Config field codex_handoff_enabled must be true or false")
 
+    if "codex_handoff_allow_repo_paths" in data and not isinstance(data["codex_handoff_allow_repo_paths"], bool):
+        raise ConfigError("Config field codex_handoff_allow_repo_paths must be true or false")
+
     for field in E2E_STRING_FIELDS:
         if field in data and (not isinstance(data[field], str) or not data[field].strip()):
             raise ConfigError(f"Config field {field} must be a non-empty string")

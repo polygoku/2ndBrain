@@ -25,7 +25,7 @@ from worker.validators import validate_markdown
 from worker.writer import GeneratedWriter, WriteSafetyError, normalize_relative_path
 
 
-DATE_PATTERN = re.compile(r"(\d{4}-\d{2}-\d{2})")
+IMPORT_RESPONSE_FILENAME_PATTERN = re.compile(r"^daily-brief-(\d{4}-\d{2}-\d{2})\.md$")
 
 
 def load_source_items(config: dict[str, Any], use_mock: bool, use_fixture: bool = False) -> list[dict[str, Any]]:
@@ -65,6 +65,14 @@ def _require_codex_handoff_config(config: dict[str, Any]) -> None:
     for key in ("codex_handoff_inbox_path", "codex_handoff_outbox_path"):
         if not str(config.get(key, "")).strip():
             raise ConfigError(f"Codex handoff requires {key}")
+    if not bool(config.get("codex_handoff_allow_repo_paths", False)):
+        repo_root = Path(config["vps_repo_path"]).resolve()
+        for key in ("codex_handoff_inbox_path", "codex_handoff_outbox_path"):
+            handoff_path = Path(config[key]).resolve()
+            if handoff_path == repo_root or repo_root in handoff_path.parents:
+                raise ConfigError(
+                    f"{key} must not be inside the git repo unless codex_handoff_allow_repo_paths=true"
+                )
 
 
 def _safe_handoff_prefix(config: dict[str, Any]) -> str:
@@ -86,11 +94,14 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _run_date_from_path(path: Path) -> date:
-    match = DATE_PATTERN.search(path.name)
+def _run_date_from_import_filename(path: Path) -> date:
+    match = IMPORT_RESPONSE_FILENAME_PATTERN.fullmatch(path.name)
     if not match:
-        return date.today()
-    return date.fromisoformat(match.group(1))
+        raise ConfigError("Codex handoff import filename must match daily-brief-YYYY-MM-DD.md")
+    try:
+        return date.fromisoformat(match.group(1))
+    except ValueError as exc:
+        raise ConfigError("Codex handoff import filename contains an invalid YYYY-MM-DD date") from exc
 
 
 def export_codex_handoff(config: dict[str, Any]) -> int:
@@ -161,6 +172,7 @@ def import_codex_handoff(config: dict[str, Any], response_file: str, production_
             raise ConfigError(f"Codex handoff response path is not a file: {response_path}")
         if response_path.suffix.lower() != ".md":
             raise ConfigError("Codex handoff import file must be a .md file")
+        run_date = _run_date_from_import_filename(response_path)
         if not production_output and prefix not in response_path.relative_to(outbox_root).parts:
             raise ConfigError("Codex handoff test import requires response file under _test")
     except (ConfigError, WriteSafetyError, ValueError) as exc:
@@ -176,7 +188,6 @@ def import_codex_handoff(config: dict[str, Any], response_file: str, production_
         return 1
 
     writer = GeneratedWriter(config, dry_run=False, e2e_test_output_only=not production_output)
-    run_date = _run_date_from_path(response_path)
     try:
         if production_output:
             result = writer.write_daily_briefing(markdown, run_date=run_date)
@@ -230,6 +241,16 @@ def run(
         return 2
 
     config = dict(loaded.data)
+    if production_output and export_codex_handoff_mode:
+        print("FAIL: --production-output cannot be used with --export-codex-handoff")
+        return 2
+    if (export_codex_handoff_mode or import_codex_handoff_file) and (test_output or real_openclaw):
+        print("FAIL: Codex handoff modes cannot be combined with --test-output or --real-openclaw")
+        return 2
+    if production_output and not import_codex_handoff_file:
+        if dry_run is True or mock or real or fixture or test_output or live_readonly_test or real_openclaw:
+            print("FAIL: --production-output must be used by itself or with --import-codex-handoff")
+            return 2
     if export_codex_handoff_mode:
         return export_codex_handoff(config)
     if import_codex_handoff_file:
