@@ -1,6 +1,8 @@
 import hashlib
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -541,6 +543,27 @@ def test_codex_handoff_script_has_safe_defaults():
         assert forbidden not in text
     assert "openclaw" not in text.lower()
     assert "telegram" not in text.lower()
+
+
+def test_codex_handoff_script_is_executable():
+    script = ROOT / "scripts" / "vps_codex_handoff.sh"
+
+    assert script.is_file()
+    if shutil.which("git"):
+        completed = subprocess.run(
+            ["git", "ls-files", "--stage", "--", "scripts/vps_codex_handoff.sh"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode == 0 and completed.stdout.strip():
+            assert completed.stdout.startswith("100755 ")
+            return
+
+    if os.name == "nt":
+        pytest.skip("POSIX executable bits are represented through git mode on Windows")
+    assert script.stat().st_mode & stat.S_IXUSR
 
 
 def test_codex_handoff_script_refuses_disabled_config_without_rclone_or_openclaw(tmp_path):
