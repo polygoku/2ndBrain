@@ -13,6 +13,10 @@ Thumbs.db
 vault/
 Ky Second Brain/
 *.log
+inbox-for-codex/
+outbox-from-codex/
+*raw-daily-brief*.md
+*daily-brief*.manifest.json
 
 # Worker local config and secrets
 config/secondbrain.local.json

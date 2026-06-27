@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+import re
+from collections import Counter
 from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +23,9 @@ from worker.sources.vault_inbox import load_vault_inbox_items
 from worker.state import ProcessedRegistry
 from worker.validators import validate_markdown
 from worker.writer import GeneratedWriter, WriteSafetyError, normalize_relative_path
+
+
+IMPORT_RESPONSE_FILENAME_PATTERN = re.compile(r"^daily-brief-(\d{4}-\d{2}-\d{2})\.md$")
 
 
 def load_source_items(config: dict[str, Any], use_mock: bool, use_fixture: bool = False) -> list[dict[str, Any]]:
@@ -51,6 +59,168 @@ def validate_production_output_config(config: dict[str, Any]) -> None:
         normalize_relative_path(path)
 
 
+def _require_codex_handoff_config(config: dict[str, Any]) -> None:
+    if not bool(config.get("codex_handoff_enabled", False)):
+        raise ConfigError("Codex handoff requires codex_handoff_enabled=true")
+    for key in ("codex_handoff_inbox_path", "codex_handoff_outbox_path"):
+        if not str(config.get(key, "")).strip():
+            raise ConfigError(f"Codex handoff requires {key}")
+    if not bool(config.get("codex_handoff_allow_repo_paths", False)):
+        repo_root = Path(config["vps_repo_path"]).resolve()
+        for key in ("codex_handoff_inbox_path", "codex_handoff_outbox_path"):
+            handoff_path = Path(config[key]).resolve()
+            if handoff_path == repo_root or repo_root in handoff_path.parents:
+                raise ConfigError(
+                    f"{key} must not be inside the git repo unless codex_handoff_allow_repo_paths=true"
+                )
+
+
+def _safe_handoff_prefix(config: dict[str, Any]) -> str:
+    raw_prefix = str(config.get("codex_handoff_output_prefix", "_test")).strip()
+    if raw_prefix != "_test":
+        raise ConfigError('Codex handoff currently requires codex_handoff_output_prefix="_test"')
+    return raw_prefix
+
+
+def _handoff_child(root: Path, *parts: str) -> Path:
+    root_resolved = root.resolve()
+    child = (root / Path(*parts)).resolve()
+    if child != root_resolved and root_resolved not in child.parents:
+        raise ConfigError(f"Codex handoff path escapes configured root: {child}")
+    return child
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _run_date_from_import_filename(path: Path) -> date:
+    match = IMPORT_RESPONSE_FILENAME_PATTERN.fullmatch(path.name)
+    if not match:
+        raise ConfigError("Codex handoff import filename must match daily-brief-YYYY-MM-DD.md")
+    try:
+        return date.fromisoformat(match.group(1))
+    except ValueError as exc:
+        raise ConfigError("Codex handoff import filename contains an invalid YYYY-MM-DD date") from exc
+
+
+def export_codex_handoff(config: dict[str, Any]) -> int:
+    try:
+        _require_codex_handoff_config(config)
+        prefix = _safe_handoff_prefix(config)
+    except ConfigError as exc:
+        print(f"FAIL: {exc}")
+        return 2
+
+    try:
+        items = load_source_items(config, use_mock=False, use_fixture=False)
+    except (GmailReadonlyError, CalendarReadonlyError) as exc:
+        print(f"FAIL: {exc}")
+        return 1
+
+    registry = ProcessedRegistry(Path(config["processed_registry_path"]))
+    pending = [item for item in items if not registry.is_processed(item)]
+    skipped = len(items) - len(pending)
+    run_date = date.today()
+    prompt = build_daily_prompt(pending, run_date=run_date)
+
+    inbox_root = Path(config["codex_handoff_inbox_path"])
+    output_dir = _handoff_child(inbox_root, prefix)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    raw_path = _handoff_child(output_dir, f"raw-daily-brief-{run_date.isoformat()}.md")
+    manifest_path = _handoff_child(output_dir, f"raw-daily-brief-{run_date.isoformat()}.manifest.json")
+    raw_path.write_text(prompt, encoding="utf-8")
+    source_counts = Counter(str(item.get("source_type", "unknown")) for item in pending)
+    manifest = {
+        "input_filename": raw_path.name,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "item_count": len(pending),
+        "source_type_counts": dict(sorted(source_counts.items())),
+        "sha256": _sha256(raw_path),
+        "status": "exported",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    print(f"Items read: {len(items)}")
+    print(f"Items skipped as already processed: {skipped}")
+    print(f"Items exported: {len(pending)}")
+    print(f"Source type counts: {dict(sorted(source_counts.items()))}")
+    print(f"Raw prompt file: {raw_path}")
+    print(f"Manifest file: {manifest_path}")
+    print("OpenClaw called or mocked: no")
+    print("Registry updated: no")
+    print("Vault files written: 0")
+    return 0
+
+
+def import_codex_handoff(config: dict[str, Any], response_file: str, production_output: bool = False) -> int:
+    try:
+        _require_codex_handoff_config(config)
+        prefix = _safe_handoff_prefix(config)
+        if production_output:
+            validate_production_output_config(config)
+        response_path = Path(response_file).expanduser()
+        if not response_path.is_absolute():
+            response_path = (Path.cwd() / response_path)
+        response_path = response_path.resolve()
+        outbox_root = Path(config["codex_handoff_outbox_path"]).resolve()
+        if response_path != outbox_root and outbox_root not in response_path.parents:
+            raise ConfigError("Codex handoff import file must be under configured outbox path")
+        if not response_path.exists():
+            raise ConfigError(f"Codex handoff response file is missing: {response_path}")
+        if not response_path.is_file():
+            raise ConfigError(f"Codex handoff response path is not a file: {response_path}")
+        if response_path.suffix.lower() != ".md":
+            raise ConfigError("Codex handoff import file must be a .md file")
+        run_date = _run_date_from_import_filename(response_path)
+        if not production_output and prefix not in response_path.relative_to(outbox_root).parts:
+            raise ConfigError("Codex handoff test import requires response file under _test")
+    except (ConfigError, WriteSafetyError, ValueError) as exc:
+        print(f"FAIL: {exc}")
+        return 2
+
+    markdown = response_path.read_text(encoding="utf-8")
+    validation = validate_markdown(markdown)
+    if not validation.ok:
+        print(f"FAIL: {validation.error}")
+        print("Validation result: failed")
+        print("Vault files written: 0")
+        return 1
+
+    writer = GeneratedWriter(config, dry_run=False, e2e_test_output_only=not production_output)
+    try:
+        if production_output:
+            result = writer.write_daily_briefing(markdown, run_date=run_date)
+        else:
+            result = writer.write_test_daily_briefing(markdown, run_date=run_date)
+    except WriteSafetyError as exc:
+        print(f"FAIL: {exc}")
+        print("Validation result: passed")
+        print("Vault files written: 0")
+        return 1
+
+    manifest_path = response_path.with_suffix(".manifest.json")
+    manifest = {
+        "response_filename": response_path.name,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "sha256": _sha256(response_path),
+        "status": "imported",
+        "vault_output_path": str(result.path),
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    print(f"Response file: {response_path}")
+    print("Validation result: passed")
+    print(f"Manifest file: {manifest_path}")
+    print("OpenClaw called or mocked: no")
+    print("Gmail/Calendar sources loaded: no")
+    print("Registry updated: no")
+    print("Automation log appended: no")
+    print("Vault files written: 1")
+    print(f"- wrote: {result.path}")
+    return 0
+
+
 def run(
     config_path: str | None = None,
     dry_run: bool | None = None,
@@ -61,6 +231,8 @@ def run(
     live_readonly_test: bool = False,
     real_openclaw: bool = False,
     production_output: bool = False,
+    export_codex_handoff_mode: bool = False,
+    import_codex_handoff_file: str | None = None,
 ) -> int:
     try:
         loaded = load_config(config_path)
@@ -69,6 +241,21 @@ def run(
         return 2
 
     config = dict(loaded.data)
+    if production_output and export_codex_handoff_mode:
+        print("FAIL: --production-output cannot be used with --export-codex-handoff")
+        return 2
+    if (export_codex_handoff_mode or import_codex_handoff_file) and (test_output or real_openclaw):
+        print("FAIL: Codex handoff modes cannot be combined with --test-output or --real-openclaw")
+        return 2
+    if production_output and not import_codex_handoff_file:
+        if dry_run is True or mock or real or fixture or test_output or live_readonly_test or real_openclaw:
+            print("FAIL: --production-output must be used by itself or with --import-codex-handoff")
+            return 2
+    if export_codex_handoff_mode:
+        return export_codex_handoff(config)
+    if import_codex_handoff_file:
+        return import_codex_handoff(config, import_codex_handoff_file, production_output=production_output)
+
     effective_dry_run = bool(config["dry_run"]) if dry_run is None else dry_run
     if real:
         effective_dry_run = False
@@ -213,7 +400,9 @@ def main() -> None:
     mode.add_argument("--real", action="store_true", help="Use real configured sources and OpenClaw command")
     mode.add_argument("--fixture", action="store_true", help="Use local fixture sources and fixture OpenClaw output")
     mode.add_argument("--live-readonly-test", action="store_true", help="Use configured read-only sources and write only _test outputs")
-    mode.add_argument("--production-output", action="store_true", help="Use real sources and OpenClaw, then write whitelisted production outputs")
+    mode.add_argument("--export-codex-handoff", action="store_true", help="Export raw daily prompt for Codex folder handoff")
+    mode.add_argument("--import-codex-handoff", help="Import generated Codex handoff markdown from configured outbox")
+    parser.add_argument("--production-output", action="store_true", help="Use whitelisted production outputs; with import, requires production gates")
     parser.add_argument("--test-output", action="store_true", help="With --fixture, write only safe _test generated outputs")
     parser.add_argument("--real-openclaw", action="store_true", help="With --live-readonly-test, call the configured OpenClaw command")
     args = parser.parse_args()
@@ -230,6 +419,8 @@ def main() -> None:
             live_readonly_test=args.live_readonly_test,
             real_openclaw=args.real_openclaw,
             production_output=args.production_output,
+            export_codex_handoff_mode=args.export_codex_handoff,
+            import_codex_handoff_file=args.import_codex_handoff,
         )
     )
 
