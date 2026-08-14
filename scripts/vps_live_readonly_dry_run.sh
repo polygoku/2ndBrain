@@ -34,13 +34,24 @@ cd "$REPO_ROOT"
 fail() { printf 'FAIL: %s\n' "$1"; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  else
+    fail "python3 or python is required"
+  fi
+fi
+
 if [[ "$SKIP_OPENCLAW" == true && "$REAL_OPENCLAW" == true ]]; then
   fail "--skip-openclaw and --real-openclaw cannot be used together"
 fi
 
 [[ -f "$CONFIG_FILE" ]] || fail "Config file missing: $CONFIG_FILE"
 
-python - "$CONFIG_FILE" <<'PY'
+"$PYTHON_BIN" - "$CONFIG_FILE" <<'PY'
 import json
 import sys
 from pathlib import PurePosixPath
@@ -120,6 +131,6 @@ if [[ "$REAL_OPENCLAW" == true ]]; then
   WORKER_ARGS+=(--real-openclaw)
 fi
 
-python -m worker.run_daily "${WORKER_ARGS[@]}"
+"$PYTHON_BIN" -m worker.run_daily "${WORKER_ARGS[@]}"
 
 pass "Live read-only dry run completed with _test-only worker output"

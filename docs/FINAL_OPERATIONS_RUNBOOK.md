@@ -154,6 +154,26 @@ scripts/vps_health_check.sh --config=/opt/secondbrain/config/secondbrain.local.j
 
 Use `--prepare-dirs` only when you want to create local runtime directories. It does not create notes inside the vault.
 
+The health check also probes Gmail and Calendar read-only OAuth refreshability
+when those sources are enabled. If it reports that a refresh token expired or
+was revoked, reauthorize the affected service before the next scheduled run:
+
+```bash
+python3 scripts/vps_google_oauth_reauthorize.py \
+  --config=/opt/secondbrain/config/secondbrain.local.json \
+  --service=gmail \
+  --port=8766
+```
+
+Run the helper through an SSH localhost tunnel from a trusted browser machine.
+The helper prints a Google consent URL and writes the replacement token without
+printing token contents.
+
+If this repeats every 7 days, the likely root cause is a Google OAuth app still
+in Testing publishing status. Move the OAuth consent screen to In production,
+or use Workspace trusted/internal app controls where applicable, so refresh
+tokens are not subject to the testing-mode 7-day lifetime.
+
 ## Status Inspection
 
 Routine status should prefer `--no-journal`:
@@ -163,6 +183,63 @@ scripts/vps_status_report.sh --config=/opt/secondbrain/config/secondbrain.local.
 ```
 
 Use journal output only when needed. Journal output is redacted for common token patterns, but avoid pasting secrets into logs.
+
+## Daily Brief Troubleshooting Map
+
+When a daily note is missing, inspect in this order:
+
+1. Timer and service state:
+
+```bash
+systemctl list-timers --all 'secondbrain*' --no-pager
+systemctl status secondbrain-daily.service --no-pager
+```
+
+2. Recent failure details:
+
+```bash
+journalctl -u secondbrain-daily.service -n 160 --no-pager
+```
+
+Look first for these known signatures:
+
+- `invalid_grant: Token has been expired or revoked.` means the Gmail or Calendar OAuth refresh token must be reauthorized.
+- `Argument list too long` means the OpenClaw wrapper or prompt-size controls are wrong; source bodies should be truncated before OpenClaw receives the prompt.
+- rclone failures before worker startup mean the vault copy transport failed; check only copy-based rclone commands, never sync/delete flows.
+
+3. OAuth preflight:
+
+```bash
+python3 scripts/vps_google_oauth_health.py \
+  --config=/opt/secondbrain/config/secondbrain.local.json \
+  --service=all
+```
+
+4. Local VPS vault output:
+
+```bash
+find '/opt/secondbrain/vault/00-System/Daily Briefings' \
+  -maxdepth 1 -type f -name '*.md' -printf '%f %s %TY-%Tm-%Td %TH:%TM\n' \
+  | sort | tail -12
+```
+
+5. Handoff/export heartbeat, if that path is being used:
+
+```bash
+find '/opt/secondbrain/vault/00-System/Codex Handoff/_status' \
+  -maxdepth 1 -type f -printf '%f %s %TY-%Tm-%Td %TH:%TM\n'
+```
+
+6. Google Drive mirror on the local workstation:
+
+```powershell
+Get-ChildItem -LiteralPath 'G:\My Drive\Personal\Second Brain\00-System\Daily Briefings' `
+  -File -Filter '*.md' | Sort-Object LastWriteTime -Descending | Select-Object -First 12
+```
+
+Do not inspect or paste private email bodies, calendar descriptions, OAuth JSON
+contents, rclone configs, token values, or raw daily prompt dumps while
+troubleshooting. Report metadata and short error labels.
 
 ## Verify Obsidian Output
 

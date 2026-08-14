@@ -1,16 +1,25 @@
 import json
 import shutil
 import subprocess
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
 
 from worker.openclaw_client import OpenClawResult, mock_markdown
-from worker.run_daily import load_source_items, run
+from worker.entity_updates import DAILY_END, DAILY_START, ENTITIES_END, ENTITIES_START
+from worker.run_daily import configured_run_date, load_source_items, run
 from worker.state import item_hash
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_configured_run_date_uses_operating_timezone_at_utc_boundary():
+    assert configured_run_date(
+        {"calendar_timezone": "America/New_York"},
+        now=datetime(2026, 8, 6, 1, 0, tzinfo=timezone.utc),
+    ) == date(2026, 8, 5)
 
 
 def make_config(tmp_path: Path, **overrides):
@@ -175,6 +184,57 @@ def test_production_output_writes_production_paths_log_registry_and_staging(tmp_
     assert list((Path(config["generated_path"]) / "staging").glob("*.md"))
 
 
+def test_production_entity_mode_updates_real_notes_instead_of_process_copies(tmp_path, monkeypatch):
+    config_path, config = make_config(tmp_path, entity_update_enabled=True)
+    vault = Path(config["vps_vault_path"])
+    project = vault / "02-Projects" / "DOB-PE" / "Existing Job.md"
+    person = vault / "05-People" / "Lisa Li.md"
+    project.parent.mkdir(parents=True)
+    person.parent.mkdir(parents=True)
+    project.write_text("# Existing Job\n\nUser project content.\n", encoding="utf-8")
+    person.write_text("# Lisa Li\n\nUser person content.\n", encoding="utf-8")
+    stub_sources(monkeypatch)
+    entities = {
+        "projects": [{
+            "name": "Existing Job",
+            "existing_path": "02-Projects/DOB-PE/Existing Job.md",
+            "category": "DOB-PE",
+            "summary": "Active DOB job.",
+            "status": "active",
+            "aliases": [],
+            "related_people": ["Lisa Li"],
+            "updates": ["New filing request received."],
+            "open_actions": ["Review filing request."],
+        }],
+        "people": [{
+            "name": "Lisa Li",
+            "existing_path": "05-People/Lisa Li.md",
+            "context": "DOB filing correspondent.",
+            "aliases": [],
+            "related_projects": ["Existing Job"],
+            "updates": ["Requested filing review."],
+            "open_follow_ups": ["Confirm review."],
+        }],
+    }
+    response = (
+        f"{DAILY_START}\n# Daily Briefing\n\n## Calendar Summary\n\n- None.\n{DAILY_END}\n"
+        f"{ENTITIES_START}\n```json\n{json.dumps(entities)}\n```\n{ENTITIES_END}\n"
+    )
+    monkeypatch.setattr(
+        "worker.run_daily.run_openclaw",
+        lambda *args, **kwargs: OpenClawResult(success=True, markdown=response, called=True),
+    )
+
+    result = run(config_path=str(config_path), production_output=True)
+
+    assert result == 0
+    assert "User project content." in project.read_text(encoding="utf-8")
+    assert "New filing request received." in project.read_text(encoding="utf-8")
+    assert "User person content." in person.read_text(encoding="utf-8")
+    assert "Requested filing review." in person.read_text(encoding="utf-8")
+    assert not list((vault / "02-Projects" / "MTA-Transit" / "Process").glob("*.md"))
+
+
 def test_production_output_invalid_markdown_fails_before_writes(tmp_path, monkeypatch):
     config_path, config = make_config(tmp_path)
     vault = Path(config["vps_vault_path"])
@@ -202,10 +262,7 @@ def test_production_output_refuses_existing_non_generated_note(tmp_path, monkeyp
     daily_dir.mkdir(parents=True)
     (daily_dir / "2026-06-25.md").write_text("# User note\n", encoding="utf-8")
     stub_sources(monkeypatch)
-    monkeypatch.setattr(
-        "worker.run_daily.date",
-        type("FakeDate", (), {"today": staticmethod(lambda: __import__("datetime").date(2026, 6, 25))}),
-    )
+    monkeypatch.setattr("worker.run_daily.configured_run_date", lambda config: date(2026, 6, 25))
     monkeypatch.setattr(
         "worker.run_daily.run_openclaw",
         lambda prompt, config, dry_run=False, mock=False, fixture=False: OpenClawResult(

@@ -13,4 +13,4 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/secondbrain/logs /opt/secondbrain/state /opt/secondbrain/tmp /opt/secondbrain/generated /opt/secondbrain/vault
+ReadWritePaths=/opt/secondbrain/logs /opt/secondbrain/state /opt/secondbrain/tmp /opt/secondbrain/generated /opt/secondbrain/vault /opt/secondbrain/.openclaw /opt/secondbrain/secrets

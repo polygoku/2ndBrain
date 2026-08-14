@@ -30,9 +30,20 @@ cd "$REPO_ROOT"
 fail() { printf 'FAIL: %s\n' "$1"; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  else
+    fail "python3 or python is required"
+  fi
+fi
+
 [[ -f "$CONFIG_FILE" ]] || fail "Config file missing: $CONFIG_FILE"
 
-python - "$CONFIG_FILE" <<'PY'
+"$PYTHON_BIN" - "$CONFIG_FILE" <<'PY'
 import json
 import sys
 from pathlib import PurePosixPath
@@ -62,7 +73,7 @@ required = {
 }
 if not required.issubset(set(allowed)):
     fail("allowed_write_paths must include daily briefings and automation log")
-if not any(item.startswith("02-Projects/") and item.endswith("/Process") for item in allowed):
+if not data.get("entity_update_enabled", False) and not any(item.startswith("02-Projects/") and item.endswith("/Process") for item in allowed):
     fail("allowed_write_paths must include at least one project Process root")
 
 for item in allowed:
@@ -83,6 +94,12 @@ Safety summary:
 - Gmail and Calendar writes are not performed.
 TEXT
 
+if [[ -x "scripts/vps_google_oauth_health.py" ]]; then
+  "$PYTHON_BIN" scripts/vps_google_oauth_health.py --config="$CONFIG_FILE" --service=all
+else
+  fail "Google OAuth health helper is missing or not executable"
+fi
+
 if [[ "$NO_PULL" == false ]]; then
   scripts/vps_rclone_check.sh --config="$CONFIG_FILE"
   scripts/vps_pull_vault.sh --config="$CONFIG_FILE"
@@ -90,7 +107,7 @@ else
   pass "Skipping rclone check and pull because --no-pull was supplied"
 fi
 
-python -m worker.run_daily --config "$CONFIG_FILE" --production-output
+"$PYTHON_BIN" -m worker.run_daily --config "$CONFIG_FILE" --production-output
 
 if [[ "$NO_PUSH" == false ]]; then
   scripts/vps_push_generated.sh --config="$CONFIG_FILE"

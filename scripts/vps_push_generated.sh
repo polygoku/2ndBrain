@@ -23,8 +23,19 @@ fail() { printf 'FAIL: %s\n' "$1"; exit 1; }
 warn() { printf 'WARN: %s\n' "$1"; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  else
+    fail "python3 or python is required"
+  fi
+fi
+
 json_value() {
-  python - "$CONFIG_FILE" "$1" <<'PY'
+  "$PYTHON_BIN" - "$CONFIG_FILE" "$1" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -41,7 +52,7 @@ PY
 }
 
 json_array() {
-  python - "$CONFIG_FILE" "$1" <<'PY'
+  "$PYTHON_BIN" - "$CONFIG_FILE" "$1" <<'PY'
 import json
 import sys
 from pathlib import Path

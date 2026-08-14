@@ -144,6 +144,14 @@ def validate_config(data: dict[str, Any], path: Path) -> None:
     if "production_output_enabled" in data and not isinstance(data["production_output_enabled"], bool):
         raise ConfigError("Config field production_output_enabled must be true or false")
 
+    if "entity_update_enabled" in data and not isinstance(data["entity_update_enabled"], bool):
+        raise ConfigError("Config field entity_update_enabled must be true or false")
+
+    if "max_source_body_chars" in data:
+        max_source_body_chars = data["max_source_body_chars"]
+        if not isinstance(max_source_body_chars, int) or max_source_body_chars <= 0:
+            raise ConfigError("Config field max_source_body_chars must be a positive integer")
+
     if "codex_handoff_enabled" in data and not isinstance(data["codex_handoff_enabled"], bool):
         raise ConfigError("Config field codex_handoff_enabled must be true or false")
 

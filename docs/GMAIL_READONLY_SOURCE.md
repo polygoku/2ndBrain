@@ -138,6 +138,32 @@ If credential or token files are missing, the adapter fails clearly before tryin
 
 If the token is invalid or lacks the read-only scope, regenerate the token with only the read-only Gmail scope.
 
+If the worker fails with `invalid_grant`, the refresh token has expired or was
+revoked. Reauthorize from a trusted workstation with an SSH tunnel to the VPS:
+
+```bash
+ssh -N -L 8766:127.0.0.1:8766 multibot-vps
+```
+
+In another terminal on the VPS:
+
+```bash
+cd /opt/secondbrain
+python3 scripts/vps_google_oauth_reauthorize.py \
+  --config=/opt/secondbrain/config/secondbrain.local.json \
+  --service=gmail \
+  --port=8766
+```
+
+Open the printed `AUTH_URL` locally and approve only the read-only Gmail scope.
+The helper writes the replacement token to the configured token path without
+printing token contents.
+
+For a durable fix, check the Google Cloud OAuth consent screen for this client.
+Google can expire refresh tokens after 7 days when the OAuth app is in Testing
+status. Move the app to In production, or mark it trusted/internal in a Google
+Workspace environment, before relying on unattended daily runs.
+
 ## Next Phase
 
 The next source-adapter phase is Calendar read-only support. Calendar should follow the same pattern: disabled by default, read-only scope only, no credentials in Git, and tests that do not require live Google access.
