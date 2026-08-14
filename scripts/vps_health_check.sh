@@ -240,6 +240,12 @@ print(f"Summary: {failures} FAIL, {warnings} WARN")
 raise SystemExit(1 if failures else 0)
 PY
 
+if [[ -x "$REPO_ROOT/scripts/vps_google_oauth_health.py" ]]; then
+  "$PYTHON_BIN" "$REPO_ROOT/scripts/vps_google_oauth_health.py" --config="$CONFIG_FILE" --service=all
+else
+  warn "Google OAuth health helper is not executable or is missing"
+fi
+
 if [[ "$NO_SYSTEMD" == true ]]; then
   pass "Skipping systemd checks because --no-systemd was supplied"
 elif command -v systemctl >/dev/null 2>&1; then

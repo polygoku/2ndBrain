@@ -10,5 +10,13 @@ if [ -f /opt/secondbrain/.venv/bin/activate ]; then
   . /opt/secondbrain/.venv/bin/activate
 fi
 
-python -m worker.run_daily --config config/secondbrain.local.json >> /opt/secondbrain/logs/automation.log 2>&1
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  printf 'FAIL: python3 or python is required\n' >&2
+  exit 1
+fi
 
+"$PYTHON_BIN" -m worker.run_daily --config config/secondbrain.local.json >> /opt/secondbrain/logs/automation.log 2>&1

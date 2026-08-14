@@ -11,8 +11,10 @@ from datetime import date
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from worker.config import ConfigError, load_config
+from worker.entity_updates import EntityUpdateError, load_entity_catalog, parse_generated_bundle
 from worker.openclaw_client import run_openclaw
 from worker.prompt_builder import build_daily_prompt
 from worker.sources.calendar_readonly import CalendarReadonlyError, load_calendar_items
@@ -26,6 +28,15 @@ from worker.writer import GeneratedWriter, WriteSafetyError, normalize_relative_
 
 
 IMPORT_RESPONSE_FILENAME_PATTERN = re.compile(r"^daily-brief-(\d{4}-\d{2}-\d{2})\.md$")
+
+
+def configured_run_date(config: dict[str, Any], now: datetime | None = None) -> date:
+    """Return the run date in the configured operating timezone."""
+    zone = ZoneInfo(str(config.get("calendar_timezone", "America/New_York")))
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return current.astimezone(zone).date()
 
 
 def load_source_items(config: dict[str, Any], use_mock: bool, use_fixture: bool = False) -> list[dict[str, Any]]:
@@ -121,8 +132,16 @@ def export_codex_handoff(config: dict[str, Any]) -> int:
     registry = ProcessedRegistry(Path(config["processed_registry_path"]))
     pending = [item for item in items if not registry.is_processed(item)]
     skipped = len(items) - len(pending)
-    run_date = date.today()
-    prompt = build_daily_prompt(pending, run_date=run_date)
+    run_date = configured_run_date(config)
+    entity_enabled = bool(config.get("entity_update_enabled", False))
+    catalog = load_entity_catalog(config["vps_vault_path"]) if entity_enabled else None
+    prompt = build_daily_prompt(
+        pending,
+        run_date=run_date,
+        entity_catalog=catalog,
+        require_entity_updates=entity_enabled,
+        max_item_body_chars=int(config.get("max_source_body_chars", 2500)),
+    )
 
     inbox_root = Path(config["codex_handoff_inbox_path"])
     output_dir = _handoff_child(inbox_root, prefix)
@@ -326,7 +345,16 @@ def run(
         print("Failures: 0")
         return 0
 
-    prompt = build_daily_prompt(pending, run_date=date.today())
+    run_date = configured_run_date(config)
+    entity_enabled = bool(config.get("entity_update_enabled", False))
+    catalog = load_entity_catalog(config["vps_vault_path"]) if entity_enabled else None
+    prompt = build_daily_prompt(
+        pending,
+        run_date=run_date,
+        entity_catalog=catalog,
+        require_entity_updates=entity_enabled,
+        max_item_body_chars=int(config.get("max_source_body_chars", 2500)),
+    )
     client_result = run_openclaw(
         prompt,
         config,
@@ -344,7 +372,18 @@ def run(
         print("Failures: 1")
         return 1
 
-    validation = validate_markdown(client_result.markdown)
+    try:
+        bundle = parse_generated_bundle(
+            client_result.markdown,
+            require_entities=entity_enabled and client_result.called,
+        )
+    except EntityUpdateError as exc:
+        print(f"FAIL: {exc}")
+        print("Files written or would be written: 0")
+        print("Failures: 1")
+        return 1
+
+    validation = validate_markdown(bundle.daily_markdown)
     if not validation.ok:
         print(f"FAIL: {validation.error}")
         print("Files written or would be written: 0")
@@ -355,18 +394,22 @@ def run(
     written = []
     try:
         if test_output_only:
-            daily_result = writer.write_test_daily_briefing(client_result.markdown, run_date=date.today())
+            daily_result = writer.write_test_daily_briefing(bundle.daily_markdown, run_date=run_date)
             written.append(daily_result)
-            written.append(writer.write_test_processed_notes(client_result.markdown, run_date=date.today()))
+            written.append(writer.write_test_processed_notes(bundle.daily_markdown, run_date=run_date))
         else:
-            daily_result = writer.write_daily_briefing(client_result.markdown, run_date=date.today())
+            daily_result = writer.write_daily_briefing(bundle.daily_markdown, run_date=run_date)
             written.append(daily_result)
-        projects = sorted({str(item.get("project")) for item in pending if item.get("project")})
-        for project in projects:
-            if test_output_only:
-                written.append(writer.write_test_project_notes(project, client_result.markdown, run_date=date.today()))
-            else:
-                written.append(writer.write_project_notes(project, client_result.markdown, run_date=date.today()))
+        if entity_enabled:
+            if not test_output_only:
+                written.extend(writer.apply_entity_updates(bundle.projects, bundle.people, run_date))
+        else:
+            projects = sorted({str(item.get("project")) for item in pending if item.get("project")})
+            for project in projects:
+                if test_output_only:
+                    written.append(writer.write_test_project_notes(project, bundle.daily_markdown, run_date=run_date))
+                else:
+                    written.append(writer.write_project_notes(project, bundle.daily_markdown, run_date=run_date))
         if not test_output_only:
             writer.append_log(
                 f"Processed {len(pending)} item(s); dry_run={effective_dry_run}; mock={use_mock_sources}; fixture={fixture}."
@@ -384,6 +427,9 @@ def run(
         registry.save()
 
     print(f"Files written or would be written: {len(written)}")
+    if entity_enabled:
+        print(f"Entity project updates returned: {len(bundle.projects)}")
+        print(f"Entity people updates returned: {len(bundle.people)}")
     for result in written:
         action = "would write" if result.dry_run else "wrote"
         print(f"- {action}: {result.path}")

@@ -19,6 +19,15 @@ done
 
 cd "$REPO_ROOT"
 
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  printf 'FAIL: python3 or python is required\n'
+  exit 1
+fi
+
 printf 'PASS: Starting copy-only transport dry-run validation\n'
 scripts/vps_transport_dry_run.sh "${CONFIG_ARG[@]}"
 
@@ -29,6 +38,6 @@ else
 fi
 
 printf 'PASS: Starting fixture worker validation with safe _test outputs\n'
-python -m worker.run_daily --config "$CONFIG_FILE" --fixture --test-output
+"$PYTHON_BIN" -m worker.run_daily --config "$CONFIG_FILE" --fixture --test-output
 
 printf 'PASS: E2E dry-run harness completed. Any worker writes were limited to configured _test output paths.\n'

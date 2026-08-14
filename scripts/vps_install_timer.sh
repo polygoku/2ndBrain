@@ -36,6 +36,17 @@ fail() { printf 'FAIL: %s\n' "$1"; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 info() { printf 'INFO: %s\n' "$1"; }
 
+PYTHON_BIN="${PYTHON_BIN:-}"
+if [[ -z "$PYTHON_BIN" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    PYTHON_BIN="python3"
+  elif command -v python >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  else
+    fail "python3 or python is required"
+  fi
+fi
+
 SERVICE_TEMPLATE="$REPO_ROOT/systemd/$SERVICE_NAME"
 TIMER_TEMPLATE="$REPO_ROOT/systemd/$TIMER_NAME"
 SERVICE_DEST="$SYSTEMD_DIR/$SERVICE_NAME"
@@ -53,7 +64,7 @@ if [[ ! -f "$CONFIG_FILE" ]]; then
 fi
 
 if [[ -f "$CONFIG_FILE" ]]; then
-  python - "$CONFIG_FILE" <<'PY'
+  "$PYTHON_BIN" - "$CONFIG_FILE" <<'PY'
 import json
 import sys
 
@@ -94,7 +105,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
   fail "Run this script as root or with sudo, or use --dry-run"
 fi
 
-python - "$SERVICE_TEMPLATE" "$SERVICE_DEST" "$REPO_ROOT" "$CONFIG_FILE" <<'PY'
+"$PYTHON_BIN" - "$SERVICE_TEMPLATE" "$SERVICE_DEST" "$REPO_ROOT" "$CONFIG_FILE" <<'PY'
 from pathlib import Path
 import sys
 
@@ -111,8 +122,8 @@ text = text.replace(
     f"ExecStart={repo}/scripts/vps_production_daily_brief.sh --config={config}",
 )
 text = text.replace(
-    "ReadWritePaths=/opt/secondbrain/logs /opt/secondbrain/state /opt/secondbrain/tmp /opt/secondbrain/generated /opt/secondbrain/vault",
-    f"ReadWritePaths={repo}/logs {repo}/state {repo}/tmp {repo}/generated {repo}/vault",
+    "ReadWritePaths=/opt/secondbrain/logs /opt/secondbrain/state /opt/secondbrain/tmp /opt/secondbrain/generated /opt/secondbrain/vault /opt/secondbrain/.openclaw /opt/secondbrain/secrets",
+    f"ReadWritePaths={repo}/logs {repo}/state {repo}/tmp {repo}/generated {repo}/vault {repo}/.openclaw {repo}/secrets",
 )
 dest.write_text(text, encoding="utf-8")
 dest.chmod(0o644)
